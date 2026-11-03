@@ -19,10 +19,10 @@ Physics provides the initial tasks and correctness checks. The design is intende
 ## Intended reading experience
 
 1. **Start from a paper or a confusing passage.** The reader can simply say, “I am new to this field and cannot follow this paragraph.” A precise technical question is optional.
-2. **Build an initial orientation.** Identify the research problem and the basic terms, symbols, concepts, models, and methods assumed by the selected material.
-3. **Learn the reader's foundations.** First lay out the field and the foundational areas it relies on. For topological quantum matter, besides the field itself, these include quantum mechanics, band theory from solid-state physics, symmetry, linear algebra, and basic topological ideas. The reader roughly indicates which areas they have studied, only heard of, or never encountered, or simply says something like “I studied computer science.” This is not a test and can be skipped; the agent fills in the picture from feedback during reading and uses it to distinguish unfamiliar wording from missing foundational knowledge.
-4. **Explain the necessary foundations.** Trace back to foundational concepts the reader can grasp, extract only what the current sentence relies on, and build a simple, rigorous conceptual picture with reliable sources, unfolding earlier prerequisites when needed. A glossary is only a supporting aid.
-5. **Return to the full text.** First go back to the sentence that blocked reading and map the new background onto its words, equations, and figures. Then explain what the passage does in the paper and how it connects to the surrounding text, and point out later places that reuse these concepts. Finally, let the reader continue from where they stopped.
+2. **Learn the reader's foundations.** First lay out the field and the foundational areas it relies on. For topological quantum matter, besides the field itself, these include quantum mechanics, band theory from solid-state physics, symmetry, linear algebra, and basic topological ideas. The reader roughly indicates which areas they have studied, only heard of, or never encountered, or simply says something like “I studied computer science.” This is not a test and can be skipped; the agent fills in the picture from feedback during reading and uses it to distinguish unfamiliar wording from missing foundational knowledge.
+3. **Start with a full-paper overview.** Before any sentence-level help, give the reader a basic picture of the whole paper: what question it asks; its core model or experiment (the system studied, the parameters varied, the quantities measured or computed); the authors' main conclusions; the few foundations the whole paper keeps relying on that the reader may not know; and a reading route (which sections and figures carry the main line, which can be skimmed at first). The overview fits on one screen, is pitched to the reader's background, and points to where each item appears in the paper. If the reader arrives with a specific blocked sentence, give a three-to-five-line short overview first, then turn to that sentence.
+4. **Explain the necessary foundations.** For the blocked sentence, trace back to foundational concepts the reader can grasp, extract only what the sentence relies on, and build a simple, rigorous conceptual picture with reliable sources, unfolding earlier prerequisites when needed. Reuse the picture already built in the overview instead of repeating it. A glossary is only a supporting aid.
+5. **Return to the full text.** First go back to the sentence that blocked reading and map the new background onto its words, equations, and figures. Then, with the overview as reference, explain what the passage does in the paper's main line and how it connects to the surrounding text, and point out later places that reuse these concepts. Finally, let the reader continue from where they stopped.
 6. **Adjust to feedback.** If the reader is still stuck, find where and unfold further; once the passage makes sense, continue reading.
 
 For example, a paragraph may contain three unfamiliar terms whose definitions depend on a concept the reader has never studied. The agent would identify that shared foundation, explain it using accessible language, clarify each term in context, and guide the reader through the paragraph again.
@@ -40,7 +40,8 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 
 | Output | What it provides |
 | --- | --- |
-| Field and foundation map | An introduction to the research questions and background relevant to the selected paper, plus the foundational areas the field relies on, where the reader can mark roughly where they stand. |
+| Full-paper overview | The question the paper asks, its core model or experiment, the main conclusions, the foundations the whole paper relies on, and a reading route; one screen, pitched to the reader's background, with locations in the paper. |
+| Field and foundation map | The foundational areas the field relies on, where the reader can mark roughly where they stand. |
 | Foundation explanations | Starting from concepts the reader can grasp, only the parts the current sentence relies on, explained simply and rigorously, including how these concepts relate and combine into the paper's terms. |
 | Contextual glossary | A supporting reference for basic terms, abbreviations, symbols, aliases or translations, and how they are used in the paper. |
 | Guided return to the full text | Connections from the new background back to the original sentence's words, equations, and figures; the passage's role in the paper and its links to the surrounding text; later places that reuse these concepts; and source links. |
@@ -48,6 +49,7 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 ## Design principles
 
 - **Beyond the glossary, down to foundations.** For an unfamiliar term, trace back to foundational concepts the reader can grasp, and explain those concepts and how they combine into the term, rather than only giving a definition.
+- **The whole picture first, then the details.** Give a full-paper overview before sentence-level help, so the reader knows the core model or experiment and the main conclusions; every later explanation hangs back onto that picture.
 - **Always return to the full text.** Background explanations are a short detour from the paper. Each explanation stays anchored to its place in the text; afterward it returns first to the blocked sentence, then to the paper's line of argument, and the reader continues from where they stopped. However many levels an explanation unfolds, it ends back in the paper.
 - **Support readers who cannot yet name their gaps.** Infer candidate needs from the paper and allow “I do not understand this passage” as a starting point.
 - **Only what this sentence uses.** From each foundational concept, extract only the aspect the current sentence relies on and build a simple conceptual picture, instead of unfolding a whole course.
@@ -64,9 +66,10 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 
 ```mermaid
 flowchart TD
-    A[Paper or confusing passage] --> B[Locate assumed terminology and foundations]
-    B --> C[Relate them to the reader's existing knowledge]
-    C --> D[Select a necessary background topic]
+    A[Paper or confusing passage] --> C[Learn the reader's foundations]
+    C --> O[Full-paper overview: core model or experiment, main conclusions]
+    O --> B[Locate the terms and foundations a blocked sentence assumes]
+    B --> D[Select a necessary background topic]
     D --> E[Explain terms and foundations with sources]
     E --> F[Return to the full text: map onto the sentence, restore context]
     F --> G[Reader feedback: what is still unclear?]
@@ -77,7 +80,7 @@ flowchart TD
 | Module | Responsibility |
 | --- | --- |
 | Document processing | Parse text, equations, figures, tables, and references while preserving document versions and locations. |
-| Field orientation and terminology | Identify assumed basic terms, notation, models, and methods; build a paper-specific glossary and introductory context. |
+| Field orientation and terminology | Identify assumed basic terms, notation, models, and methods; produce the full-paper overview (core model or experiment, main conclusions, reading route) and a paper-specific glossary. |
 | Goal and prerequisite modeling | Outline the foundational areas a field relies on, connect unfamiliar terms to foundational concepts and skills, represent their dependencies, and bound the learning scope. |
 | Reader context | Keep roughly where the reader stands on the field's foundation map, what has already been explained, and their feedback, so explanations start from the right place, use words the reader knows, and are not repeated. |
 | Retrieval and explanation | Retrieve introductory sources as well as research evidence; explain foundations in accessible language with claim-level provenance. |
