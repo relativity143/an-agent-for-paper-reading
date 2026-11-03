@@ -110,6 +110,8 @@ These are design references, not integrated dependencies or claims of affiliatio
 - [RPKT](https://arxiv.org/html/2508.11892v2): recursive prerequisite discovery; its demonstration motivates adding objective checks rather than relying solely on self-report.
 - [GenMentor](https://github.com/GeminiLight/gen-mentor): goal-oriented learner modeling and learning-path organization.
 - [Qlarify](https://doi.org/10.1145/3654777.3676397): recursively expandable explanations connected to source passages.
+- [ScholarPhi](https://doi.org/10.1145/3411764.3445648): just-in-time, position-sensitive definitions of terms and symbols, drawn from elsewhere in the same paper; this project instead targets background the paper assumes without defining.
+- [Paper Plain](https://doi.org/10.1145/3589955): term definitions and plain-language section summaries that help non-expert readers approach medical papers.
 - [Pxplore](https://arxiv.org/html/2510.13215v2): goal-driven learner-state modeling and learning-path planning.
 
 Reusing these ideas does not itself establish a novel research contribution. Code, model, and data licenses will need to be checked before adopting specific components.
