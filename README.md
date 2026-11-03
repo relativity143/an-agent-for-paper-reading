@@ -22,7 +22,7 @@ Physics provides the initial tasks and correctness checks. The design is intende
 2. **Build an initial orientation.** Identify the research problem and the basic terms, symbols, concepts, models, and methods assumed by the selected material.
 3. **Learn the reader's foundations.** First lay out the field and the foundational areas it relies on. For topological quantum matter, besides the field itself, these include quantum mechanics, band theory from solid-state physics, symmetry, linear algebra, and basic topological ideas. The reader roughly indicates which areas they have studied, only heard of, or never encountered, or simply says something like “I studied computer science.” This is not a test and can be skipped; the agent fills in the picture from feedback during reading and uses it to distinguish unfamiliar wording from missing foundational knowledge.
 4. **Explain the necessary foundations.** Trace back to foundational concepts the reader can grasp, extract only what the current sentence relies on, and build a simple, rigorous conceptual picture with reliable sources, unfolding earlier prerequisites when needed. A glossary is only a supporting aid.
-5. **Return to the original passage.** Show how those terms and concepts explain the sentences, equations, figures, and reasoning that blocked reading.
+5. **Return to the full text.** First go back to the sentence that blocked reading and map the new background onto its words, equations, and figures. Then explain what the passage does in the paper and how it connects to the surrounding text, and point out later places that reuse these concepts. Finally, let the reader continue from where they stopped.
 6. **Adjust to feedback.** If the reader is still stuck, find where and unfold further; once the passage makes sense, continue reading.
 
 For example, a paragraph may contain three unfamiliar terms whose definitions depend on a concept the reader has never studied. The agent would identify that shared foundation, explain it using accessible language, clarify each term in context, and guide the reader through the paragraph again.
@@ -43,11 +43,12 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 | Field and foundation map | An introduction to the research questions and background relevant to the selected paper, plus the foundational areas the field relies on, where the reader can mark roughly where they stand. |
 | Foundation explanations | Starting from concepts the reader can grasp, only the parts the current sentence relies on, explained simply and rigorously, including how these concepts relate and combine into the paper's terms. |
 | Contextual glossary | A supporting reference for basic terms, abbreviations, symbols, aliases or translations, and how they are used in the paper. |
-| Guided return to the paper | Connections from the newly explained background to the original sentences, equations, and figures, with source links. |
+| Guided return to the full text | Connections from the new background back to the original sentence's words, equations, and figures; the passage's role in the paper and its links to the surrounding text; later places that reuse these concepts; and source links. |
 
 ## Design principles
 
 - **Beyond the glossary, down to foundations.** For an unfamiliar term, trace back to foundational concepts the reader can grasp, and explain those concepts and how they combine into the term, rather than only giving a definition.
+- **Always return to the full text.** Background explanations are a short detour from the paper. Each explanation stays anchored to its place in the text; afterward it returns first to the blocked sentence, then to the paper's line of argument, and the reader continues from where they stopped. However many levels an explanation unfolds, it ends back in the paper.
 - **Support readers who cannot yet name their gaps.** Infer candidate needs from the paper and allow “I do not understand this passage” as a starting point.
 - **Only what this sentence uses.** From each foundational concept, extract only the aspect the current sentence relies on and build a simple conceptual picture, instead of unfolding a whole course.
 - **Simple but rigorous.** Use clear, accessible language instead of technical derivations. Simplify only by omission: details may be left out, but nothing stated may be wrong. Analogies should state their limits, and the key conditions for a conclusion should be kept.
@@ -67,7 +68,7 @@ flowchart TD
     B --> C[Relate them to the reader's existing knowledge]
     C --> D[Select a necessary background topic]
     D --> E[Explain terms and foundations with sources]
-    E --> F[Re-read the original passage]
+    E --> F[Return to the full text: map onto the sentence, restore context]
     F --> G[Reader feedback: what is still unclear?]
     G --> D
     G --> H[Continue reading or deepen the goal]
@@ -81,7 +82,7 @@ flowchart TD
 | Reader context | Keep roughly where the reader stands on the field's foundation map, what has already been explained, and their feedback, so explanations start from the right place, use words the reader knows, and are not repeated. |
 | Retrieval and explanation | Retrieve introductory sources as well as research evidence; explain foundations in accessible language with claim-level provenance. |
 | Planning | Choose among asking about background, explaining, unfolding earlier prerequisites, returning to the paper, and stopping. |
-| Guided re-reading | Map the explained background back to the sentences, equations, and figures that blocked reading, and walk the reader through the passage again. |
+| Return to the full text | Map the explained background back to the sentences, equations, and figures that blocked reading, explain the passage's role in the paper and its links to the surrounding text, mark later places that reuse these concepts, and bring the reader back to continue from where they stopped. |
 
 These are planned module boundaries, not existing software components. The initial implementation can use structured records and a small local database; a dedicated graph database is not required for the first prototype.
 
@@ -101,7 +102,7 @@ arXiv HTML is chosen because most physics papers are on arXiv, and the HTML vers
 | Phase | Deliverable | Completion criterion |
 | --- | --- | --- |
 | P0 — Entry-barrier examples | Passages from two physics subfields, a foundation map for each subfield, and annotations of unfamiliar basic terms, assumed foundations, and introductory sources. | Each example specifies what background a newcomer needs and reliable introductory sources for it. |
-| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python core library: document import, source navigation, foundation explanations, a contextual glossary, and guided re-reading. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
+| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python core library: document import, source navigation, foundation explanations, a contextual glossary, and guided return to the full text. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
 | P2 — Personalized gap diagnosis | A field foundation map, prerequisite relationships, the reader's stated background, and a record of what has been explained; a first version of the arXiv HTML reading interface. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
 | P3 — Feedback-driven reading loop | Step-by-step planning in the reading interface that responds to reader feedback and unfolds prerequisites on demand. | The workflow respects its budget, can terminate, and keeps the reader anchored to the original passage. |
 | P4 — Cross-subfield evaluation | Comparison with a static glossary, ordinary RAG, and a fixed expert reading guide. | Background coverage, explanation accuracy, and time to get past blocked passages are compared under comparable conditions. |
