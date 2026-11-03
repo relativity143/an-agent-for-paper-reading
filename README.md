@@ -24,6 +24,7 @@ Physics provides the initial tasks and correctness checks. The design is intende
 4. **Explain the necessary foundations.** For the blocked sentence, trace back to foundational concepts the reader can grasp, extract only what the sentence relies on, and build a simple, rigorous conceptual picture with reliable sources, unfolding earlier prerequisites when needed. Reuse the picture already built in the overview instead of repeating it. A glossary is only a supporting aid.
 5. **Return to the full text.** First go back to the sentence that blocked reading and map the new background onto its words, equations, and figures. Then, with the overview as reference, explain what the passage does in the paper's main line and how it connects to the surrounding text, and point out later places that reuse these concepts. Finally, let the reader continue from where they stopped.
 6. **Adjust to feedback.** If the reader is still stuck, find where and unfold further; once the passage makes sense, continue reading.
+7. **A full explanation after reading (Part 2).** Once the reader has finished the paper, the agent offers to walk through the core theory or experiment again, rigorously and completely. This pass no longer simplifies for readability: it states the full model or experimental setup, notation and conventions, approximations and their conditions; follows the key derivation or measurement procedure in logical order; and shows which calculations, measurements, or figures support each main conclusion, how strongly, and with what limits. Foundations explained in Part 1 are used directly, not re-explained, with a pointer to where they were covered. The explanation comes in segments, each ending with the foundations it relies on; the reader says “continue” when it reads smoothly, or names where they are stuck, and the agent fills that in the Part 1 way. It serves two purposes: it closes the learning loop by tying the piecemeal foundations into a whole, and it lets readers judge for themselves how much they have learned. The judgment is the reader's own; the system asks no questions and gives no scores.
 
 For example, a paragraph may contain three unfamiliar terms whose definitions depend on a concept the reader has never studied. The agent would identify that shared foundation, explain it using accessible language, clarify each term in context, and guide the reader through the paragraph again.
 
@@ -45,6 +46,7 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 | Foundation explanations | Starting from concepts the reader can grasp, only the parts the current sentence relies on, explained simply and rigorously, including how these concepts relate and combine into the paper's terms. |
 | Contextual glossary | A supporting reference for basic terms, abbreviations, symbols, aliases or translations, and how they are used in the paper. |
 | Guided return to the full text | Connections from the new background back to the original sentence's words, equations, and figures; the passage's role in the paper and its links to the surrounding text; later places that reuse these concepts; and source links. |
+| Full explanation (Part 2) | After the paper is read, a segmented re-explanation of the core theory or experiment at close to the paper's rigor: setup and assumptions, derivation or measurement procedure, chain of evidence, and conditions of validity; each segment lists the foundations it uses, for the reader's self-check. |
 
 ## Design principles
 
@@ -59,6 +61,7 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 - **Two distinct relationship structures.** A knowledge dependency graph describes what must be understood; an evidence and argument graph describes what supports a paper's claims.
 - **Traceable explanations.** Distinguish statements in the paper, background knowledge, and system-generated inferences. Preserve source locations and applicable conditions.
 - **Help, not testing.** The agent is a reading aid. It adjusts to what the reader says, such as “still lost” or “I already know this,” instead of quizzing them, and remembers what has been explained to avoid repetition.
+- **Simple first, rigorous after, as one loop.** Part 1 simplifies for readability; Part 2, after the paper is read, restores the omitted derivations, conditions, and evidence and uses the foundations from Part 1 directly. How smoothly the reader follows it is the most direct self-check of what they have learned.
 - **An explicit workflow first.** Start with one controller and modular tools. Introduce additional agents or learned planning policies only when evaluation justifies the complexity.
 - **Judge the help itself.** Evaluate whether the needed background is covered, whether explanations are accurate, traceable, and worded in terms the reader knows, and how quickly a reader gets past a blocked passage.
 
@@ -74,7 +77,9 @@ flowchart TD
     E --> F[Return to the full text: map onto the sentence, restore context]
     F --> G[Reader feedback: what is still unclear?]
     G --> D
-    G --> H[Continue reading or deepen the goal]
+    G --> H[Continue reading]
+    H --> P[Paper finished: segmented full explanation, Part 2]
+    P -->|reader names where they are stuck| D
 ```
 
 | Module | Responsibility |
@@ -105,7 +110,7 @@ arXiv HTML is chosen because most physics papers are on arXiv, and the HTML vers
 | Phase | Deliverable | Completion criterion |
 | --- | --- | --- |
 | P0 — Entry-barrier examples | Passages from two physics subfields, a foundation map for each subfield, and annotations of unfamiliar basic terms, assumed foundations, and introductory sources. | Each example specifies what background a newcomer needs and reliable introductory sources for it. |
-| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python standard-library helper: document import, source navigation, foundation explanations, a contextual glossary, and guided return to the full text. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
+| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python standard-library helper: document import, source navigation, foundation explanations, a contextual glossary, guided return to the full text, and a full explanation after reading. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
 | P2 — Personalized gap diagnosis | A field foundation map, prerequisite relationships, the reader's stated background, and a record of what has been explained; a first version of the arXiv HTML reading interface. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
 | P3 — Feedback-driven reading loop | Step-by-step planning in the reading interface that responds to reader feedback and unfolds prerequisites on demand. | The workflow respects its budget, can terminate, and keeps the reader anchored to the original passage. |
 | P4 — Cross-subfield evaluation | Comparison with a static glossary, ordinary RAG, and a fixed expert reading guide. | Background coverage, explanation accuracy, and time to get past blocked passages are compared under comparable conditions. |
@@ -125,6 +130,7 @@ Measure:
 - Citation support, traceability to sources, and missing assumptions.
 - Time from getting stuck to continuing with the paper, including waiting.
 - Whether readers judge that they can continue reading, and where they are still stuck.
+- Which Part 2 segments readers mark as smooth or stuck; stuck points reveal foundations that Part 1 missed or explained too thinly.
 
 Reader feedback is used to improve the agent, not to grade readers. Automated checks and expert review can assess most explanation-quality measures; small reader trials are needed to confirm that the help is useful in practice. No such results are claimed yet.
 
