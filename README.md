@@ -2,32 +2,45 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-A physics-grounded agent for reading research papers across fields, designed to identify missing prerequisites and guide readers toward a specific understanding goal.
+A physics-grounded agent that helps readers enter unfamiliar research fields by learning the essential terminology and foundational knowledge needed to understand their papers.
 
 > **Status: design stage.** This repository currently contains the project overview and development roadmap. The agent, user interface, and evaluation pipeline have not been implemented.
 
 ## Why this project
 
-Reading an unfamiliar paper often requires more than definitions of technical terms. The difficult part may be a mathematical tool, a model assumption, an experimental technique, a figure, or an unstated step in an argument.
+When entering a new field, a reader may be unfamiliar with its basic terms, standard concepts, notation, common models, and underlying assumptions. Research papers often use this background without explaining it, leaving entire paragraphs difficult to follow.
 
-This project explores how to identify the background a reader actually needs for a particular task, provide explanations grounded in reliable sources, and check whether that support leads to independent understanding.
+The reader may also be unable to name the missing knowledge or formulate a precise question. Looking up one term can introduce several more unfamiliar concepts, making it hard to find a useful starting point.
+
+The core purpose of this agent is to bridge that entry barrier: identify the essential vocabulary and foundational knowledge assumed by a paper, explain them from the reader's existing background, and help the reader return to passages that were previously inaccessible. Adaptive planning and understanding checks support this process.
 
 Physics provides the initial tasks and correctness checks. The design is intended to extend across physics subfields and into neighboring disciplines, without restricting users by degree, research experience, or specialization.
 
 ## Intended reading experience
 
-1. **Set a goal.** Understand a result, explain an equation or figure, follow a derivation, or assess a method's applicability.
-2. **Identify gaps.** Combine the reader's stated background with short diagnostic questions to locate missing concepts and skills.
-3. **Plan prerequisite learning.** Select relevant background, order it, and keep the reading goal and time budget in view.
-4. **Explain with evidence.** Retrieve reliable material and connect explanations to source passages, equations, figures, and assumptions.
-5. **Check understanding.** Ask the reader to explain, derive, or apply the idea without access to the generated answer.
-6. **Adapt and return to the paper.** Update the learner state, revise the next step, or stop when the target task is met.
+1. **Start from a paper or a confusing passage.** The reader can simply say, “I am new to this field and cannot follow this paragraph.” A precise technical question is optional.
+2. **Build an initial orientation.** Identify the research problem and the basic terms, symbols, concepts, models, and methods assumed by the selected material.
+3. **Connect to what the reader knows.** Use their background and optional brief checks to distinguish unfamiliar wording from missing foundational knowledge.
+4. **Explain the necessary foundations.** Provide a contextual glossary and short, linked background lessons with reliable sources, unfolding additional prerequisites when needed.
+5. **Return to the original passage.** Show how those terms and concepts explain the sentences, equations, figures, and reasoning that blocked reading.
+6. **Check and adapt.** Ask for a short explanation in the reader's own words or an application to a new example, then refine the next step and depth.
 
-For example, when a reader encounters an unfamiliar equation, the system would distinguish a notation problem from a missing mathematical skill or an unclear modeling assumption, then offer the relevant support.
+For example, a paragraph may contain three unfamiliar terms whose definitions depend on a concept the reader has never studied. The agent would identify that shared foundation, explain it using accessible language, clarify each term in context, and guide the reader through the paragraph again.
+
+### Planned core outputs
+
+| Output | What it provides |
+| --- | --- |
+| Field orientation | An introduction to the research questions and background relevant to the selected paper. |
+| Contextual glossary | Basic terms, abbreviations, symbols, aliases or translations, and how they are used in the paper. |
+| Foundation map and short lessons | The concepts and skills needed to understand those terms, their relationships, and a bounded order for learning them. |
+| Guided return to the paper | Connections from the newly learned background to the original passages, with source links and brief understanding checks. |
 
 ## Design principles
 
-- **Goal-dependent prerequisites.** A quick relevance check and a detailed derivation require different levels of preparation.
+- **Foundations and terminology first.** Help readers understand the field's language and assumed background. Definitions should connect unfamiliar concepts to what the reader already knows.
+- **Support readers who cannot yet name their gaps.** Infer candidate needs from the paper and allow “I do not understand this passage” as a starting point.
+- **Bounded, goal-dependent preparation.** Anchor the background to the selected material. Start with basic comprehension, then deepen support for interpretation, derivation, or critique when needed.
 - **Two distinct relationship structures.** A knowledge dependency graph describes what must be understood; an evidence and argument graph describes what supports a paper's claims.
 - **Traceable explanations.** Distinguish statements in the paper, background knowledge, and system-generated inferences. Preserve source locations and applicable conditions.
 - **Evidence-based learner state.** Reading an explanation or recognizing a term is not sufficient evidence of mastery. Record independent answers and the amount of assistance used.
@@ -38,24 +51,25 @@ For example, when a reader encounters an unfamiliar equation, the system would d
 
 ```mermaid
 flowchart TD
-    A[Paper and reading goal] --> B[Document parsing and source locations]
-    B --> C[Candidate prerequisites and brief diagnosis]
-    C --> D[Select the next learning action]
-    D --> E[Retrieve evidence and provide focused support]
-    E --> F[Independent understanding check]
-    F --> G[Update learner state]
+    A[Paper or confusing passage] --> B[Locate assumed terminology and foundations]
+    B --> C[Relate them to the reader's existing knowledge]
+    C --> D[Select a necessary background topic]
+    D --> E[Explain terms and foundations with sources]
+    E --> F[Re-read the original passage]
+    F --> G[Check comprehension and update learner state]
     G --> D
-    G --> H[Return to the paper or finish]
+    G --> H[Continue reading or deepen the goal]
 ```
 
 | Module | Responsibility |
 | --- | --- |
 | Document processing | Parse text, equations, figures, tables, and references while preserving document versions and locations. |
-| Goal and knowledge modeling | Represent target tasks, concepts, skills, prerequisites, and alternative learning paths. |
+| Field orientation and terminology | Identify assumed basic terms, notation, models, and methods; build a paper-specific glossary and introductory context. |
+| Goal and prerequisite modeling | Connect unfamiliar terms to foundational concepts and skills, represent their dependencies, and bound the learning scope. |
 | Learner modeling | Store verified, uncertain, and unmet knowledge states with supporting observations. |
-| Retrieval and explanation | Find relevant sources and generate explanations with claim-level provenance. |
+| Retrieval and explanation | Retrieve introductory sources as well as research evidence; explain foundations in accessible language with claim-level provenance. |
 | Planning | Choose among diagnosis, explanation, practice, returning to the paper, and stopping. |
-| Understanding verification | Assess independent responses and distinguish success with and without hints. |
+| Understanding verification | Check whether readers can explain terms in context and understand previously blocked passages; distinguish independent success from success with hints. |
 
 These are planned module boundaries, not existing software components. The initial implementation can use structured records and a small local database; a dedicated graph database is not required for the first prototype.
 
@@ -63,9 +77,9 @@ These are planned module boundaries, not existing software components. The initi
 
 | Phase | Deliverable | Completion criterion |
 | --- | --- | --- |
-| P0 — Task examples | A small set of reading tasks from two physics subfields, with reviewed sources and questions. | Each task has an explicit understanding target and assessment rubric. |
-| P1 — Grounded reading assistant | Document import, source navigation, retrieval, and cited explanations. | Key equations and figures are correctly linked; explanations can be checked against their sources. |
-| P2 — Gap diagnosis | Candidate prerequisite relationships, brief assessments, and a simple learner state. | Different knowledge states produce justified, bounded recommendations. |
+| P0 — Entry-barrier examples | Passages from two physics subfields, annotated with unfamiliar basic terms, assumed foundations, and introductory sources. | Each example specifies what a newcomer needs to understand and how passage comprehension will be checked. |
+| P1 — Terminology and foundations assistant | Document import, source navigation, a contextual glossary, short background lessons, and guided re-reading. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
+| P2 — Personalized gap diagnosis | Prerequisite relationships, optional brief assessments, and a simple learner state. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
 | P3 — Adaptive learning loop | Step-by-step planning, focused support, verification, and state updates. | The workflow respects its budget, can terminate, and does not infer mastery merely from exposure. |
 | P4 — Cross-subfield evaluation | Comparison with ordinary RAG and a fixed expert learning path. | Independent understanding and total time are measured under comparable conditions. |
 | P5 — Neighboring disciplines | Replaceable domain resources, terminology, evidence criteria, and assessment rules. | The adapted workflow is evaluated on held-out tasks in the new domain. |
@@ -74,11 +88,13 @@ These are planned module boundaries, not existing software components. The initi
 
 ## Evaluation plan
 
-Use the same model, source collection, and document parsing where possible when comparing the adaptive workflow with ordinary retrieval-augmented question answering and a fixed expert-designed learning path.
+The first evaluation question is whether readers new to a field can understand passages that were previously blocked by unfamiliar terminology and missing foundations. Compare the workflow with a static glossary or introductory reading guide, ordinary retrieval-augmented question answering, and a fixed expert-designed learning path. Use the same model, source collection, and document parsing where applicable.
 
 Measure:
 
-- Understanding and transfer on unseen questions without AI assistance.
+- Correct interpretation of basic terms in their paper-specific context.
+- Comprehension of previously blocked passages and transfer to new passages without AI assistance.
+- Coverage of necessary foundations, unnecessary background burden, and explanations that introduce further unexplained terms.
 - Total time, including diagnosis, reading, practice, and waiting.
 - Citation support, equation and figure interpretation errors, and missing assumptions.
 - Retention after a delay when the study design permits it.
@@ -107,7 +123,7 @@ an-agent-on-paper-reading/
 └── .gitignore         # Local artifacts, credentials, and private data exclusions
 ```
 
-There is no installation or run command yet. The next step is to define the P0 task set and establish the source-location and assessment formats before implementing the first reading workflow.
+There is no installation or run command yet. The next step is to curate passages that newcomers cannot follow, annotate their essential terms and foundational dependencies, and establish the source-location and assessment formats before implementation.
 
 ## License
 
