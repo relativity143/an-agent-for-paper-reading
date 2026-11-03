@@ -142,7 +142,7 @@ flowchart TD
 ## 仓库内容
 
 ```text
-an-agent-on-paper-reading/
+an-agent-for-paper-reading/
 ├── README.md          # 英文项目介绍与路线图
 ├── README.zh-CN.md    # 中文项目介绍与路线图
 └── .gitignore         # 本地产物、凭据和私有数据的排除规则

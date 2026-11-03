@@ -142,7 +142,7 @@ Reusing these ideas does not itself establish a novel research contribution. Cod
 ## Repository contents
 
 ```text
-an-agent-on-paper-reading/
+an-agent-for-paper-reading/
 ├── README.md          # English overview and roadmap
 ├── README.zh-CN.md    # Chinese overview and roadmap
 └── .gitignore         # Local artifacts, credentials, and private data exclusions
