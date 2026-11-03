@@ -21,12 +21,13 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlencode, urlparse
+from urllib.parse import unquote, urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
 
 USER_AGENT = "paper-foundations/0.1 (+https://github.com/relativity143/an-agent-for-paper-reading)"
+PARSER_VERSION = 2
 MAX_DOWNLOAD = 64 * 1024 * 1024
 ARXIV_RE = re.compile(r"(?P<id>\d{4}\.\d{4,5}|[a-z][a-z.\-]*/\d{7})(?P<version>v[1-9]\d*)?", re.I)
 SKIP_CLASSES = {"ltx_bibliography", "ltx_page_navbar", "ltx_page_logo", "ltx_authors", "ltx_dates"}
@@ -166,7 +167,7 @@ def equation_nodes(node):
     return []
 
 
-def render(node, include_notes=False, display_placeholder=True):
+def render(node, include_notes=False, display_placeholder=True, figure_placeholder=False):
     if isinstance(node, str):
         return node
     if skipped(node) or (node.has("ltx_note") and not include_notes):
@@ -177,11 +178,13 @@ def render(node, include_notes=False, display_placeholder=True):
     if display_placeholder and (node.has("ltx_equation") or node.has("ltx_equationgroup")):
         equations = equation_nodes(node)
         return " " + " ".join("⟨" + n.attrs["id"] + "⟩" for n in equations) + " "
-    if node.tag == "figure" or node.has("ltx_note_mark"):
+    if node.tag == "figure":
+        return " ⟨%s⟩ " % node.attrs.get("id", "figure-%s" % node.order) if figure_placeholder and is_figure(node) else ""
+    if node.has("ltx_note_mark"):
         return ""
     if node.tag == "br":
         return " "
-    body = "".join(render(c, include_notes, display_placeholder) for c in node.children)
+    body = "".join(render(c, include_notes, display_placeholder, figure_placeholder) for c in node.children)
     return body + ("\n" if node.tag in {"p", "div", "section", "h1", "h2", "h3", "h4", "li", "figcaption"} else "")
 
 
@@ -206,6 +209,40 @@ def split_sentences(text):
             result.append(sentence)
         start = end
     return result
+
+
+def own_caption_nodes(figure):
+    return [n for n in walk(figure) if n.tag == "figcaption"
+            and ancestor(n, lambda p: p.tag == "figure") is figure
+            and not ancestor(n, lambda p: p.tag == "figcaption")]
+
+
+def own_caption(figure):
+    return normalize(" ".join(render(n) for n in own_caption_nodes(figure)))
+
+
+def bibliography(nodes):
+    entries = []
+    for node in nodes:
+        if not node.has("ltx_bibitem") or not ancestor(node, lambda p: p.has("ltx_bibliography")):
+            continue
+        children = list(walk(node))
+        tag = next((n for n in children if n.has("ltx_tag_bibitem")), None)
+        label = normalize(render(tag)) if tag else ""
+        text = normalize(render(node))
+        if label and text.startswith(label):
+            text = text[len(label):].strip()
+        links = []
+        for child in children:
+            href = (child.attrs.get("href") or "").strip()
+            if child.tag != "a" or not href or href.startswith("#"):
+                continue
+            url = urljoin("https://arxiv.org/", href)
+            if urlparse(url).scheme in {"https", "http"} and url not in links:
+                links.append(url)
+        entries.append({"id": node.attrs.get("id", "bib-%s" % node.order),
+                        "label": label, "text": text, "links": links})
+    return entries
 
 
 def parse_html(html):
@@ -234,7 +271,8 @@ def parse_html(html):
     if not authors:
         authors = [n.attrs["content"] for n in all_nodes if n.tag == "meta" and n.attrs.get("name") == "citation_author" and n.attrs.get("content")]
     result = {"title": normalize(render(title_node)) if title_node else "", "authors": list(dict.fromkeys(authors)),
-              "sections": [], "paragraphs": [], "equations": [], "figures": [], "parse_warnings": []}
+              "sections": [], "paragraphs": [], "equations": [], "figures": [], "parse_warnings": [],
+              "references": bibliography(list(walk(main))), "parser_version": PARSER_VERSION}
     seen = set()
     paragraph_ids = {}
     for node in nodes:
@@ -243,7 +281,7 @@ def parse_html(html):
         if is_section(node):
             heading = next((n for n in walk(node) if n.tag in {"h2", "h3", "h4", "h5"} and section_of(n) == node.attrs.get("id")), None)
             level = 3 if node.has("ltx_subsubsection") else 2 if node.has("ltx_subsection") else 1
-            result["sections"].append({"id": node.attrs.get("id", "section-%s" % node.order), "title": normalize(render(heading)) if heading else "", "level": level, "order": node.order})
+            result["sections"].append({"id": node.attrs.get("id", "section-%s" % node.order), "title": normalize(render(heading)) if heading else "", "level": level, "order": node.order, "end_order": node.end_order})
         is_abstract = node.has("ltx_abstract")
         if (is_abstract or node.has("ltx_para")) and not ancestor(node, lambda p: p.has("ltx_abstract") or p.has("ltx_para") or p.tag == "figure" or p.has("ltx_note")):
             identifier = "abstract" if is_abstract else node.attrs.get("id", "para-%s" % node.order)
@@ -257,6 +295,9 @@ def parse_html(html):
             result["paragraphs"].append({"id": identifier, "section": section_of(node), "text": text,
                                          "sentences": split_sentences(text), "equations": [], "notes": notes,
                                          "order": node.order, "end_order": node.end_order})
+            reading_text = normalize("".join(render(c, figure_placeholder=True) for c in children))
+            if reading_text != text:
+                result["paragraphs"][-1]["reading_text"] = reading_text
         if ancestor(node, lambda p: p.has("ltx_note")):
             continue
         for eq in equation_nodes(node):
@@ -265,8 +306,12 @@ def parse_html(html):
             paragraph = paragraph_ids.get(parent)
             result["equations"].append({"id": eq.attrs["id"], "latex": r" \\ ".join(maths), "paragraph": paragraph, "section": section_of(eq), "order": eq.order})
         if is_figure(node) and not ancestor(node, is_figure):
-            captions = [n for n in walk(node) if n.tag == "figcaption" and not ancestor(n, lambda p: p.tag == "figcaption")]
-            result["figures"].append({"id": node.attrs.get("id", "figure-%s" % node.order), "caption": normalize(" ".join(render(n) for n in captions)), "section": section_of(node), "order": node.order})
+            subcaptions = [{"id": n.attrs.get("id", "figure-%s" % n.order),
+                            "caption": own_caption(n), "order": (own_caption_nodes(n) or [n])[0].order}
+                           for n in walk(node) if n is not node and n.tag == "figure"]
+            result["figures"].append({"id": node.attrs.get("id", "figure-%s" % node.order),
+                                      "caption": own_caption(node), "subcaptions": sorted(subcaptions, key=lambda c: c["order"]),
+                                      "section": section_of(node), "order": node.order})
     for paragraph in result["paragraphs"]:
         paragraph["equations"] = [eq["id"] for eq in result["equations"] if eq["paragraph"] == paragraph["id"]]
     return result
@@ -400,17 +445,37 @@ class Store:
 
     def load(self, paper, require_html=False):
         path = self.resolve(paper)
-        data = read_json(path / "paper.json")
+        with file_lock(path / ".fetch.lock", timeout=45):
+            data = self.upgrade_cache(path)
         if require_html and data.get("source") in {"pdf_only", "local_pdf"}:
             raise PaperError("No structured text for this PDF. The host agent must read %s directly and use page locations such as p3." % (path / "paper.pdf"))
         return path, data
+
+    def upgrade_cache(self, path):
+        """Caller holds .fetch.lock; rebuild derived data without fetching or touching logs."""
+        data = read_json(path / "paper.json")
+        if data.get("source") not in {"arxiv_html", "ar5iv"} or data.get("parser_version", 0) >= PARSER_VERSION:
+            return data
+        source = path / "source.html"
+        if not source.is_file():
+            raise PaperError("Old HTML cache has no source.html. Run fetch %s --refresh to rebuild it." % path.name)
+        raw = source.read_bytes()
+        if data.get("source_sha256") and hashlib.sha256(raw).hexdigest() != data["source_sha256"]:
+            raise PaperError("Cached source.html hash does not match paper.json. Run fetch %s --refresh." % path.name)
+        parsed = parse_html(raw.decode("utf-8"))
+        # The API can supply better metadata than the HTML. Keep it and source provenance.
+        parsed["title"] = data.get("title") or parsed["title"]
+        parsed["authors"] = data.get("authors") or parsed["authors"]
+        data.update(parsed)
+        write_json(path / "paper.json", data)
+        return data
 
     def summary(self, path, cached):
         data = read_json(path / "paper.json")
         return {"paper": path.name, "arxiv_id": data.get("arxiv_id"), "version": data.get("version"),
                 "title": data["title"], "source": data["source"], "source_url": data.get("source_url"),
                 "paragraph_count": len(data["paragraphs"]), "equation_count": len(data["equations"]),
-                "figure_count": len(data["figures"]), "cached": cached,
+                "figure_count": len(data["figures"]), "reference_count": len(data.get("references", [])), "cached": cached,
                 "cache_dir": str(path), "paper_json": str(path / "paper.json"),
                 "source_path": str(path / ("paper.pdf" if data["source"] in {"pdf_only", "local_pdf"} else "source.html")),
                 "outline_path": str(path / "outline.md"), "outline_exists": (path / "outline.md").is_file(),
@@ -423,7 +488,9 @@ class Store:
         identifier, version = parse_arxiv(value)
         existing = self.papers / cache_key(identifier, version) if version else self.latest_cache(identifier)
         if not refresh and existing and (existing / "paper.json").is_file():
-            return self.summary(existing, True)
+            with file_lock(existing / ".fetch.lock", timeout=45):
+                self.upgrade_cache(existing)
+                return self.summary(existing, True)
         metadata = {"arxiv_id": identifier, "version": version, "title": "", "authors": []}
         if not version:
             metadata = api_metadata(self.client, identifier)
@@ -431,6 +498,7 @@ class Store:
         path = self.papers / cache_key(identifier, version)
         with file_lock(path / ".fetch.lock", timeout=45):
             if not refresh and (path / "paper.json").is_file():
+                self.upgrade_cache(path)
                 return self.summary(path, True)
             warnings = []
             for source, url in [("arxiv_html", "https://arxiv.org/html/" + identifier + version),
@@ -474,7 +542,7 @@ class Store:
             atomic_write(path / "paper.pdf", data)
             metadata.update({"title": metadata["title"] or identifier + version, "source": "pdf_only",
                              "source_url": final_url, "fetched_at": now(), "sections": [], "paragraphs": [],
-                             "equations": [], "figures": [], "fetch_warnings": warnings,
+                             "equations": [], "figures": [], "references": [], "fetch_warnings": warnings,
                              "source_sha256": hashlib.sha256(data).hexdigest()})
             write_json(path / "paper.json", metadata)
             return self.summary(path, False)
@@ -502,7 +570,7 @@ class Store:
                     temporary.unlink()
             write_json(target / "paper.json", {"arxiv_id": None, "version": None, "title": path.stem, "authors": [],
                        "source": "local_pdf", "source_url": path.resolve().as_uri(), "fetched_at": now(),
-                       "source_sha256": digest.hexdigest(), "sections": [], "paragraphs": [], "equations": [], "figures": []})
+                       "source_sha256": digest.hexdigest(), "sections": [], "paragraphs": [], "equations": [], "figures": [], "references": []})
         return self.summary(target, False)
 
     def profile(self):
@@ -549,10 +617,14 @@ class Store:
         path = self.resolve(paper) / "log.jsonl"
         if not isinstance(record, dict):
             raise PaperError("A log entry must be a JSON object.")
+        if record.get("type", "sentence") not in ("sentence", "overview"):
+            raise PaperError("Log type must be sentence or overview.")
+        if record.get("type") == "overview" and record.get("where") is not None:
+            raise PaperError("An overview log must have where=null.")
         for key in ("gaps", "explained", "unexpanded_terms"):
             if key in record and (not isinstance(record[key], list) or not all(isinstance(x, str) for x in record[key])):
                 raise PaperError("Log field %s must be an array of strings." % key)
-        entry = {"time": now(), "where": None, "quote": "", "gaps": [], "explained": [],
+        entry = {"time": now(), "type": "sentence", "where": None, "quote": "", "gaps": [], "explained": [],
                  "unexpanded_terms": [], "next": None, "feedback": None}
         entry.update(record)
         encoded = json.dumps(entry, ensure_ascii=False, allow_nan=False) + "\n"
@@ -563,15 +635,20 @@ class Store:
 
     def log_show(self, paper, last=10):
         path = self.resolve(paper) / "log.jsonl"
-        if last < 1:
-            raise PaperError("--last must be positive.")
+        if last < 0:
+            raise PaperError("--last must be nonnegative; 0 reads all records.")
         if not path.exists():
             return []
         with file_lock(path.parent / ".log.lock"):
             with path.open(encoding="utf-8") as stream:
-                lines = deque((line for line in stream if line.strip()), maxlen=last)
+                lines = deque((line for line in stream if line.strip()), maxlen=last or None)
         try:
-            return [json.loads(line) for line in lines]
+            records = [json.loads(line) for line in lines]
+            if not all(isinstance(record, dict) for record in records):
+                raise ValueError("Expected log objects")
+            for record in records:
+                record.setdefault("type", "sentence")
+            return records
         except ValueError as error:
             raise PaperError("Invalid JSON in log.jsonl; records were left unchanged.") from error
 
@@ -634,7 +711,76 @@ def find(data, query, after=None):
                 results.append({"id": item["id"], "type": kind, "section": item.get("section"),
                                 "snippet": item[field][max(0, match.start() - 60):match.end() + 60],
                                 "order": item["order"]})
+    for figure in data["figures"]:
+        for caption in figure.get("subcaptions", []):
+            match = re.search(re.escape(query), caption["caption"], flags=re.I)
+            if caption["order"] > boundary and match:
+                results.append({"id": caption["id"], "parent": figure["id"], "type": "figure",
+                                "section": figure.get("section"), "order": caption["order"],
+                                "snippet": caption["caption"][max(0, match.start() - 60):match.end() + 60]})
     return sorted(results, key=lambda item: item["order"])
+
+
+def paper_text(data, section=None):
+    lower, upper = -1, float("inf")
+    if section is not None:
+        selected = next((s for s in data["sections"] if s["id"] == section), None)
+        if selected is None:
+            raise PaperError("Unknown section: " + section)
+        lower, upper = selected["order"], selected["end_order"]
+    events = [(item["order"], kind, item)
+              for kind in ("sections", "paragraphs", "equations", "figures")
+              for item in data[kind] if lower <= item["order"] <= upper]
+    equations = {e["id"]: e for e in data["equations"]}
+    figures = {f["id"]: f for f in data["figures"]}
+    embedded = set()
+
+    def equation_text(item):
+        return "[%s] $$%s$$" % (item["id"], item["latex"])
+
+    def figure_text(item):
+        lines = ["[%s] %s" % (item["id"], item["caption"])]
+        lines.extend("[%s] %s" % (c["id"], c["caption"]) for c in item.get("subcaptions", []))
+        return "\n".join(lines)
+
+    def expand(match):
+        identifier = match[1]
+        if identifier in equations:
+            content = equation_text(equations[identifier])
+        elif identifier in figures:
+            content = figure_text(figures[identifier])
+        else:
+            return match[0]
+        embedded.add(identifier)
+        return "\n" + content + "\n"
+
+    lines = [data["title"]] if section is None else []
+    for _, kind, item in sorted(events, key=lambda event: event[0]):
+        if item["id"] in embedded:
+            continue
+        if kind == "paragraphs":
+            # Expand display math/figures where they occur, before the paragraph's trailing text.
+            body = re.sub(r"⟨([^⟩]+)⟩", expand, item.get("reading_text", item["text"]))
+            lines.append("[%s] %s" % (item["id"], body))
+            lines.extend("[%s note %s] %s" % (item["id"], i, note)
+                         for i, note in enumerate(item.get("notes", []), 1))
+        elif kind == "sections":
+            lines.append("[%s] %s" % (item["id"], item["title"]))
+        elif kind == "equations":
+            lines.append(equation_text(item))
+        else:
+            lines.append(figure_text(item))
+    return "\n\n".join(lines)
+
+
+def reference(data, identifier):
+    refs = data.get("references", [])
+    exact = [r for r in refs if r["id"] == identifier]
+    label = identifier.strip().strip("[]()")
+    matches = exact or [r for r in refs if r["label"].strip().strip("[]()") == label]
+    if len(matches) != 1:
+        raise PaperError(("Ambiguous reference: " if matches else "Unknown reference: ") + identifier)
+    return matches[0]
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -648,13 +794,17 @@ def command_parser():
     fetch = commands.add_parser("fetch", help="Cache an arXiv paper or a local PDF")
     fetch.add_argument("input")
     fetch.add_argument("--refresh", action="store_true")
-    for name in ["outline-path", "locate", "context", "find"]:
+    for name in ["outline-path", "locate", "context", "find", "text", "ref"]:
         command = commands.add_parser(name)
         command.add_argument("paper")
         if name in {"locate", "find"}:
             command.add_argument("query")
         if name == "find":
             command.add_argument("--after")
+        if name == "text":
+            command.add_argument("--section", help="Include this section and its subsections")
+        if name == "ref":
+            command.add_argument("identifier", help="Reference number, displayed label, or HTML ID")
         if name == "context":
             command.add_argument("paragraph")
             command.add_argument("--before", type=int, default=1)
@@ -678,7 +828,7 @@ def command_parser():
     add.add_argument("--json", required=True, help="JSON object, or - to read JSON from stdin")
     show = log.add_parser("show")
     show.add_argument("paper")
-    show.add_argument("--last", type=int, default=10)
+    show.add_argument("--last", type=int, default=10, help="Last N records; 0 reads all records")
     return parser
 
 
@@ -698,6 +848,10 @@ def run(args, store):
         return locate(data, args.query)
     if args.command == "context":
         return context(data, args.paragraph, args.before, args.after)
+    if args.command == "text":
+        return paper_text(data, args.section)
+    if args.command == "ref":
+        return reference(data, args.identifier)
     return find(data, args.query, args.after)
 
 
@@ -705,7 +859,7 @@ def main(argv=None):
     try:
         args = command_parser().parse_args(argv)
         result = run(args, Store())
-        print(json.dumps(result, ensure_ascii=False, allow_nan=False))
+        print(result if args.command == "text" else json.dumps(result, ensure_ascii=False, allow_nan=False))
         return 0
     except (PaperError, OSError, ValueError) as error:
         print(json.dumps({"error": str(error)}, ensure_ascii=False))

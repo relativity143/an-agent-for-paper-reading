@@ -157,20 +157,29 @@ The installer copies the Skill to `~/.claude/skills/paper-foundations/` and `${C
 
 > Use paper-foundations to help me read this paper. I am new to this field and cannot follow this passage. Explain the necessary foundations, then take me back to the full paper.
 
-Supply an arXiv link or local PDF and the sentence that blocked you; a technical question is optional. Before installation, you can also ask the host to read the repository's [SKILL.md](skills/paper-foundations/SKILL.md) directly.
+Supply an arXiv link or local PDF, optionally with the sentence that blocked you; a technical question is optional. On first reading, the Skill gives a full-paper overview within one screen. If you already supplied a sentence, it first gives a three-to-five-line overview of the question, model or experiment, and main conclusions, then helps with that sentence. Later sessions reuse that overview unless you ask for it again. Before installation, you can also ask the host to read the repository's [SKILL.md](skills/paper-foundations/SKILL.md) directly.
 
 Run the helper separately to inspect acquisition and navigation:
 
 ```sh
 python3 skills/paper-foundations/scripts/paperread.py fetch 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py text 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py text 2610.27436v1 --section S2
 python3 skills/paper-foundations/scripts/paperread.py locate 2610.27436v1 "How does a localized, non-Hermitian defect affect"
 python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
+python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
+python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --last 0
 ```
 
-Private data defaults to `~/.paperread/`; override it with `PAPERREAD_HOME`. Both hosts share that profile by default. Cached fetches make no network requests. An unversioned ID uses the highest cached version; add `--refresh` to check for a newer version. Cache names replace `/` in legacy IDs with `_`.
+`text` is the only command that outputs plain text. It preserves the reading order of section titles, numbered paragraphs, display equations with LaTeX, and figure/table captions; `--section` includes that section and its subsections. The full structure remains available in `paper.json`. Search both a concept's name and its LaTeX notation, then check the meaning in context. `ref` accepts a reference number or entry ID, such as `26` or `bib.bib19`, and returns the paper's bibliography entry and saved links; read and verify the cited source before using it to support an explanation.
 
-For PDF-only papers, the helper saves the PDF and the host reads it directly using page locations. The script does not parse PDFs or generate explanations; the host writes `outline.md` after reading the paper. Marking a concept `known` requires `--source` recording explicit reader confirmation; an explanation alone is only `explained`.
+`log show --last 0` returns the complete log, so an earlier overview is not missed among recent sentence explanations. The host records an overview with `type: "overview"` and `where: null`; sentence explanations use the default `type: "sentence"`. Logging an explanation never establishes that the reader understands it.
+
+Private data defaults to `~/.paperread/`; override it with `PAPERREAD_HOME`. Both hosts share that profile by default. Cached fetches make no network requests. Older HTML caches are updated by reparsing the saved `source.html` locally, preserving metadata, outlines, and logs; if that source is missing, the tool requests `fetch --refresh`. An unversioned ID uses the highest cached version; add `--refresh` to check for a newer version. Cache names replace `/` in legacy IDs with `_`.
+
+For PDF-only papers, the helper saves the PDF and the host reads it directly using page locations, including the bibliography; `text`, `ref`, and HTML navigation commands are unavailable. The script does not parse PDFs or generate explanations; the host writes `outline.md` after reading the paper. Marking a concept `known` requires `--source` recording explicit reader confirmation; an explanation alone is only `explained`.
 
 ```sh
 python3 -B -m unittest discover -s tests -v

@@ -2,6 +2,8 @@
 
 本文是 README 中“落地形式 · 第一步”的实现说明，供实现者直接照做。设计理念、阅读流程和设计原则以 [README.zh-CN.md](../README.zh-CN.md) 为准；本文只规定第一步怎么实现。
 
+**实现状态（2026-11-03）：** 第 14 节的五项第二轮修改已落实到工具、Skill 和回归测试；具体检查与未验证范围见 [validation.md](validation.md)。
+
 ## 1. 目标与范围
 
 **目标：** 做一个在 Claude Code 和 Codex 中都能使用的 skill。读者给出一篇论文和卡住的句子，Agent 找出读者缺的基础，从读者能理解的起点讲起，讲完带读者回到全文，并记住讲过什么、读者懂什么。
@@ -102,10 +104,11 @@ an-agent-for-paper-reading/
 | 段落 | `div.ltx_para`，id 如 `S1.p4`、`S2.SS1.p1` | 存入 `paragraphs`，所属节取最近的外层 `section` |
 | 行内公式 | `math`，LaTeX 在 `alttext` 属性中 | 在段落文本中写成 `$<alttext>$`，不要取 MathML 内部文字 |
 | 行间公式 | `table.ltx_equation` / `ltx_equationgroup`，id 如 `S2.E1` | 存入 `equations`（LaTeX 取其中 `math` 的 `alttext`）；所在段落文本中写成占位 `⟨S2.E1⟩` |
-| 图 | `figure.ltx_figure`，id 如 `S2.F1`；图注在 `figcaption.ltx_caption` | 存入 `figures`；子图（id 如 `S2.F1.sf1`）合并到父图 |
+| 图表 | `figure.ltx_figure` / `figure.ltx_table`，id 如 `S2.F1` / `S2.T1` | 存入 `figures`，保留所属节与原文顺序；`caption` 仅取父图自己的 `figcaption`，子图标题存为 `subcaptions: [{id, caption, order}]`，不混入主图注 |
 | 引用 | `cite.ltx_cite` | 保留可见文字（如 `[25]`） |
 | 脚注 | `.ltx_note` | 不混入段落正文，存入该段落的 `notes` |
-| 跳过 | `.ltx_bibliography`、`.ltx_page_navbar`、`.ltx_page_logo`、`.ltx_authors`、`.ltx_dates` | 不解析 |
+| 参考文献 | `.ltx_bibliography` 中的 `.ltx_bibitem`，编号取 `.ltx_tag_bibitem` | 独立存入 `references: [{id, label, text, links}]`，保留 DOI / arXiv 等 HTTP(S) 链接，不混入正文和正文查找 |
+| 跳过 | `.ltx_page_navbar`、`.ltx_page_logo`、`.ltx_authors`、`.ltx_dates` | 不解析 |
 
 空白字符合并成单个空格。
 
@@ -113,7 +116,7 @@ an-agent-for-paper-reading/
 
 LaTeXML 不标注句子，需要自己切分：
 
-- 在 `.`、`?`、`!` 后跟空白、下一个字符为大写字母或 `(`、`[` 时切分；
+- 在 `.`、`?`、`!` 后跟空白、下一个字符为大写字母或 `(`、`[`、`$` 时切分，句末标点须在下述保护区之外；
 - 以下缩写后的句点不切：`e.g.`、`i.e.`、`et al.`、`Fig.`、`Figs.`、`Eq.`、`Eqs.`、`Ref.`、`Refs.`、`Sec.`、`Secs.`、`vs.`、`cf.`、`approx.`、`resp.`；
 - `$...$` 和 `⟨...⟩` 内部不切。
 
@@ -154,23 +157,27 @@ LaTeXML 不标注句子，需要自己切分：
 
 `paragraphs` 按原文顺序排列，以便判断“前文”和“后文”。`pdf_only` 时只写元数据，`paragraphs` 等为空数组。
 
+第二轮新增顶层 `references` 与 `parser_version: 2`；图表增加 `subcaptions`。节、段落、公式、图表保留 `order`，节和段落保留 `end_order`，供按原文范围筛选。段落内嵌图表时另存带占位的 `reading_text`，不改变句子定位所用的 `text`。旧 HTML 缓存在 `fetch` 复用或结构化读取时从本地 `source.html` 重解析，保留文献元数据、`outline.md` 和 `log.jsonl`；源文件缺失或哈希不匹配时提示显式刷新，不静默下载。
+
 ## 5. 命令行接口
 
-所有命令的结果以 JSON 输出到 stdout；出错时输出 `{"error": "..."}` 并以非零状态退出。`<paper>` 可以是 arXiv 编号或已缓存的目录名。对 `pdf_only` 和 `local_pdf` 的论文，`locate`、`context`、`find` 返回错误并说明需要直接阅读 PDF。
+除 `text` 成功时输出纯文本外，命令的结果以 JSON 输出到 stdout（帮助信息除外）；出错时输出 `{"error": "..."}` 并以非零状态退出。`<paper>` 可以是 arXiv 编号或已缓存的目录名。对 `pdf_only` 和 `local_pdf` 的论文，`text`、`ref`、`locate`、`context`、`find` 返回错误并说明需要直接阅读 PDF。
 
 | 命令 | 作用 |
 | --- | --- |
 | `fetch <输入>` | 获取并解析论文，写入缓存；输出编号、版本、标题、来源、段落数、`outline.md` 是否已存在。已缓存时直接返回，`--refresh` 强制重新下载。 |
 | `outline-path <paper>` | 输出 `outline.md` 的路径和是否已存在，供宿主 Agent 读写。 |
+| `text <paper> [--section <节编号>]` | 按原文顺序输出节标题、带编号的段落、行间公式及图表标题；段内公式在原位置展开。指定节时包含其子节，不包含仅编号前缀相似的其他节。 |
+| `ref <paper> <编号>` | 按显示编号（如 `26`、`[26]`）或条目 ID（如 `bib.bib19`）返回对应参考文献及链接，未找到时返回错误。 |
 | `locate <paper> "<句子片段>"` | 在所有句子中模糊匹配（先规范化空白、大小写；去掉 `$...$` 后再比对一次，因为从 PDF 复制的公式与 LaTeX 不同），用 `difflib` 打分，输出得分最高的 3 个候选：句子编号、段落编号、所属节、句子原文、分数。 |
 | `context <paper> <段落编号> [--before N] [--after N]` | 输出该段落及前后各 N 段（默认 1）的完整文本和所属节。 |
-| `find <paper> "<词或符号>" [--after <段落编号>]` | 在段落、图注、公式 LaTeX 中不区分大小写查找，输出出现位置（编号、类型、所属节、前后 60 字片段）。带 `--after` 时只输出该位置之后的结果，用于标出“后文还会用到”的地方。 |
+| `find <paper> "<词或符号>" [--after <段落编号>]` | 在段落、图表主标题、子图标题、公式 LaTeX 中不区分大小写查找，输出出现位置（编号、类型、所属节、前后 60 字片段）。子图命中保留自己的编号和 `parent` 图表编号。带 `--after` 时只输出该位置之后的结果，用于标出“后文还会用到”的地方。 |
 | `profile show` | 输出读者档案。 |
 | `profile set-background "<文字>"` | 记录读者自述的背景。 |
 | `profile set-area <领域编号> studied\|heard\|none` | 记录读者对某个基础领域的大致程度。 |
 | `profile mark "<概念>" known\|unsure\|explained [--paper <paper>] [--where <编号>]` | 记录某个具体概念的状态和出处。 |
-| `log add <paper> --json '<记录>'` | 追加一条讲解记录。 |
-| `log show <paper> [--last N]` | 查看最近的记录。 |
+| `log add <paper> --json '<记录>'` | 追加一条记录；`--json -` 从标准输入读取。`type` 为 `overview` 或 `sentence`，缺省为后者；`overview` 的 `where` 须为 `null`。 |
+| `log show <paper> [--last N]` | 默认查看最近 10 条；`--last 0` 读取全部，用于检查是否已有导读。旧记录缺少 `type` 时按 `sentence` 返回，不回写历史日志。 |
 
 ## 6. 数据格式
 

@@ -142,18 +142,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(eqs["S1.E3"]["paragraph"], "S1.SS1.p1")
         self.assertNotIn("ROW_A_SENTINEL", self.paragraphs["S1.SS1.p1"]["text"])
 
-    def test_subfigure_captions_are_merged_into_the_parent(self):
+    def test_subfigure_captions_are_separate_from_the_parent_caption(self):
         self.assertEqual(len(self.data["figures"]), 1)
         figure = self.data["figures"][0]
         self.assertEqual(figure["id"], "S1.F1")
         self.assertEqual(figure["section"], "S1")
+        self.assertEqual(figure["caption"], "Figure 1: Synthetic winding paths.")
         for fragment in (
             "Panel A shows a winding loop.",
             "Panel B shows an open path.",
-            "Figure 1: Synthetic winding paths.",
         ):
-            self.assertIn(fragment, figure["caption"])
-            self.assertEqual(figure["caption"].count(fragment), 1)
+            self.assertNotIn(fragment, figure["caption"])
+            self.assertEqual([c["caption"] for c in figure["subcaptions"]].count(fragment), 1)
 
 
 class NestedParserRegressionTests(unittest.TestCase):
@@ -313,7 +313,7 @@ class TableRegressionTests(unittest.TestCase):
             ["S2.F1"],
         )
 
-    def test_nested_table_and_figure_captions_merge_into_the_parent(self):
+    def test_nested_table_and_figure_captions_stay_with_the_parent_as_subcaptions(self):
         for outer, inner in (("ltx_table", "ltx_figure"), ("ltx_figure", "ltx_table")):
             with self.subTest(outer=outer, inner=inner):
                 data = paperread.parse_html('''
@@ -330,8 +330,10 @@ class TableRegressionTests(unittest.TestCase):
                 self.assertEqual(data["figures"][0]["section"], "S2")
                 self.assertEqual(
                     data["figures"][0]["caption"],
-                    "Panel A: Winding detail. Overall comparison.",
+                    "Overall comparison.",
                 )
+                self.assertEqual(data["figures"][0]["subcaptions"][0]["id"], "S2.visual1.a")
+                self.assertEqual(data["figures"][0]["subcaptions"][0]["caption"], "Panel A: Winding detail.")
 
 
 class StoreCase(unittest.TestCase):

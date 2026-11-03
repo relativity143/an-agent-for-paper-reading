@@ -157,20 +157,29 @@ sh scripts/install.sh
 
 > 使用 paper-foundations 帮我读这篇论文。我刚接触这个领域，这一段看不懂。请补必要基础，再带我回到全文。
 
-附上 arXiv 链接或本地 PDF，以及卡住的句子；不必先提出专业问题。也可以在安装前直接让宿主读取仓库中的 [SKILL.md](skills/paper-foundations/SKILL.md)。
+附上 arXiv 链接或本地 PDF，可以同时给出卡住的句子；不必先提出专业问题。首次阅读时，Skill 先给一屏以内的全文导读；已经带着具体句子时，先用三到五行介绍研究问题、核心模型或实验及主要结论，再讲解该句。后续直接沿用导读中的图景，按你的要求再给导读。也可以在安装前直接让宿主读取仓库中的 [SKILL.md](skills/paper-foundations/SKILL.md)。
 
 工具可单独运行，用于检查获取和定位：
 
 ```sh
 python3 skills/paper-foundations/scripts/paperread.py fetch 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py text 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py text 2610.27436v1 --section S2
 python3 skills/paper-foundations/scripts/paperread.py locate 2610.27436v1 "How does a localized, non-Hermitian defect affect"
 python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
+python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
+python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --last 0
 ```
 
-数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
+只有 `text` 输出纯文本，按原文顺序保留节标题、带编号的段落、含 LaTeX 的行间公式以及图表标题；`--section` 包含该节及其子节，完整结构仍可查看 `paper.json`。查找后文时，概念名及其 LaTeX 符号都要搜，再核对上下文中的含义。`ref` 接受参考文献编号或条目 ID（如 `26` 或 `bib.bib19`），返回本篇条目及保存的链接；须实际读取并核对所引来源，才能用它支持讲解。
 
-只有 PDF 时，工具保存 PDF，由宿主直接阅读并使用页码定位。脚本不解析 PDF，也不自行生成解释；`outline.md` 由宿主通读论文后写入。`known` 状态必须附 `--source`，记录读者明确确认的依据；讲过只记为 `explained`。
+`log show --last 0` 返回完整记录，避免导读被较新的逐句讲解挤出近期记录而漏判。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认使用 `type: "sentence"`。记录讲过什么不等于确认读者已经理解。
+
+数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；旧 HTML 缓存会从本地 `source.html` 重新解析，保留元数据、全文脉络和记录，源文件缺失时才提示 `fetch --refresh`。不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
+
+只有 PDF 时，工具保存 PDF，正文和参考文献都由宿主直接阅读并使用页码定位，不使用 `text`、`ref` 或 HTML 定位命令。脚本不解析 PDF，也不自行生成解释；`outline.md` 由宿主通读论文后写入。`known` 状态必须附 `--source`，记录读者明确确认的依据；讲过只记为 `explained`。
 
 ```sh
 python3 -B -m unittest discover -s tests -v
