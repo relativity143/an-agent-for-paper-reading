@@ -85,14 +85,25 @@ flowchart TD
 
 These are planned module boundaries, not existing software components. The initial implementation can use structured records and a small local database; a dedicated graph database is not required for the first prototype.
 
+## Delivery form
+
+The core logic lives in one Python package: document processing, term and foundation extraction, the field foundation map, explanation generation, and wording checks. Each way of using the agent is a thin layer on top, and model calls go through a common interface so that Claude, GPT, or other models can be used. Delivery is planned in two steps:
+
+| Step | Form | Purpose |
+| --- | --- | --- |
+| Step 1 (P0–P1) | An Agent Skill (a `SKILL.md` workflow) with the Python core library, usable in Claude Code and Codex; the reader's background and explanation history are stored in local JSON files. | Iterate quickly on explanation quality with the P0 examples: where to start, keeping only the relevant parts, staying simple but rigorous, and using only words the reader knows. |
+| Step 2 (P2–P3) | A local web reading interface built on arXiv HTML: the paper on the left, explanations on the right, the field foundation map at the top, and feedback buttons such as “still lost,” “stuck on this word,” and “I know this.” | Let readers ask about a selected sentence, see explanations mapped to the original sentences and equations, and mark where they stand on the foundation map. |
+
+arXiv HTML is chosen because most physics papers are on arXiv, and the HTML version is converted from the LaTeX source with stable identifiers for paragraphs and equations (such as `S2.p3` and `S2.E1`), so explanations can be anchored precisely without PDF parsing. When a paper has no HTML version, the agent falls back to the LaTeX source or PDF parsing. Once the web interface is stable, it can be packaged as a browser extension for arxiv.org; an MCP server, a Zotero plugin, or other forms can be added later as needed.
+
 ## Development roadmap
 
 | Phase | Deliverable | Completion criterion |
 | --- | --- | --- |
 | P0 — Entry-barrier examples | Passages from two physics subfields, a foundation map for each subfield, and annotations of unfamiliar basic terms, assumed foundations, and introductory sources. | Each example specifies what background a newcomer needs and reliable introductory sources for it. |
-| P1 — Terminology and foundations assistant | Document import, source navigation, a contextual glossary, short background lessons, and guided re-reading. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
-| P2 — Personalized gap diagnosis | A field foundation map, prerequisite relationships, the reader's stated background, and a record of what has been explained. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
-| P3 — Feedback-driven reading loop | Step-by-step planning that responds to reader feedback and unfolds prerequisites on demand. | The workflow respects its budget, can terminate, and keeps the reader anchored to the original passage. |
+| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python core library: document import, source navigation, foundation explanations, a contextual glossary, and guided re-reading. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
+| P2 — Personalized gap diagnosis | A field foundation map, prerequisite relationships, the reader's stated background, and a record of what has been explained; a first version of the arXiv HTML reading interface. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
+| P3 — Feedback-driven reading loop | Step-by-step planning in the reading interface that responds to reader feedback and unfolds prerequisites on demand. | The workflow respects its budget, can terminate, and keeps the reader anchored to the original passage. |
 | P4 — Cross-subfield evaluation | Comparison with a static glossary, ordinary RAG, and a fixed expert reading guide. | Background coverage, explanation accuracy, and time to get past blocked passages are compared under comparable conditions. |
 | P5 — Neighboring disciplines | Replaceable domain resources, terminology, evidence criteria, and evaluation criteria. | The adapted workflow is evaluated on held-out tasks in the new domain. |
 
