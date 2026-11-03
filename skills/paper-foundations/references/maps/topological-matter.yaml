@@ -1,0 +1,27 @@
+# 供宿主 Agent 选择讲解起点；不是必修课表，也不是掌握测验。
+# requires 是入门讲解时常用的基础依赖，按当前论文取舍。
+field: topological-matter
+name: 拓扑量子物态
+areas:
+  - id: linear-algebra
+    name: 线性代数
+    concepts: [矩阵与向量, 本征值与本征向量, 厄米矩阵, 幺正变换]
+  - id: quantum-mechanics
+    name: 量子力学
+    requires: [linear-algebra]
+    concepts: [量子态, 哈密顿量, 本征态与能级, 对易关系, 绝热演化]
+  - id: solid-state
+    name: 固体物理（能带理论）
+    requires: [quantum-mechanics]
+    concepts: [晶格与周期性, 布洛赫定理, 能带与能隙, 布里渊区, 绝缘体与金属, 紧束缚模型]
+  - id: symmetry
+    name: 对称性
+    requires: [quantum-mechanics]
+    concepts: [时间反演对称性, 粒子-空穴对称性, 手征对称性]
+  - id: topology-basics
+    name: 拓扑的基本概念
+    concepts: [连续形变, 拓扑不变量, 绕数]
+  - id: field-core
+    name: 拓扑量子物态的核心概念
+    requires: [solid-state, symmetry, topology-basics]
+    concepts: [Berry 相位与 Berry 曲率, 陈数, 体-边对应, 拓扑绝缘体, SSH 模型]

@@ -4,7 +4,7 @@
 
 A physics-grounded agent that helps readers enter unfamiliar research fields by supplying the essential terminology and foundational knowledge needed to understand their papers.
 
-> **Status: design stage.** This repository currently contains the project overview and development roadmap. The agent, user interface, and evaluation pipeline have not been implemented.
+> **Status: first local prototype.** A Claude Code / Codex Skill, Python standard-library helper, and offline tests are available. The host agent provides explanations; the web reader and reader evaluation have not been implemented.
 
 ## Why this project
 
@@ -84,15 +84,15 @@ flowchart TD
 | Planning | Choose among asking about background, explaining, unfolding earlier prerequisites, returning to the paper, and stopping. |
 | Return to the full text | Map the explained background back to the sentences, equations, and figures that blocked reading, explain the passage's role in the paper and its links to the surrounding text, mark later places that reuse these concepts, and bring the reader back to continue from where they stopped. |
 
-These are planned module boundaries, not existing software components. The initial implementation can use structured records and a small local database; a dedicated graph database is not required for the first prototype.
+These are the overall module boundaries. Step 1 implements paper caching, source navigation, profiles, and reading records. The host agent performs interpretation and explanation through the Skill; local JSON / JSONL files store state.
 
 ## Delivery form
 
-The core logic lives in one Python package: document processing, term and foundation extraction, the field foundation map, explanation generation, and wording checks. Each way of using the agent is a thin layer on top, and model calls go through a common interface so that Claude, GPT, or other models can be used. Delivery is planned in two steps:
+Step 1 uses a Skill and a single-file Python helper. Claude Code / Codex handles interpretation, retrieval, and explanation; the helper handles caching, parsing, navigation, and records without making model API calls. A later web interface can build on these boundaries:
 
 | Step | Form | Purpose |
 | --- | --- | --- |
-| Step 1 (P0–P1) | An Agent Skill (a `SKILL.md` workflow) with the Python core library, usable in Claude Code and Codex; the reader's background and explanation history are stored in local JSON files. | Iterate quickly on explanation quality with the P0 examples: where to start, keeping only the relevant parts, staying simple but rigorous, and using only words the reader knows. |
+| Step 1 (P0–P1) | An Agent Skill (a `SKILL.md` workflow) with a Python standard-library helper, usable in Claude Code and Codex; background and explanation history are stored in local JSON / JSONL files. | Iterate from actual reading obstacles: where to start, keeping only relevant foundations, staying simple but rigorous, and using words the reader understands. |
 | Step 2 (P2–P3) | A local web reading interface built on arXiv HTML: the paper on the left, explanations on the right, the field foundation map at the top, and feedback buttons such as “still lost,” “stuck on this word,” and “I know this.” | Let readers ask about a selected sentence, see explanations mapped to the original sentences and equations, and mark where they stand on the foundation map. |
 
 arXiv HTML is chosen because most physics papers are on arXiv, and the HTML version is converted from the LaTeX source with stable identifiers for paragraphs and equations (such as `S2.p3` and `S2.E1`), so explanations can be anchored precisely without PDF parsing. When a paper has no HTML version, the agent falls back to the LaTeX source or PDF parsing. Once the web interface is stable, it can be packaged as a browser extension for arxiv.org; an MCP server, a Zotero plugin, or other forms can be added later as needed.
@@ -102,13 +102,13 @@ arXiv HTML is chosen because most physics papers are on arXiv, and the HTML vers
 | Phase | Deliverable | Completion criterion |
 | --- | --- | --- |
 | P0 — Entry-barrier examples | Passages from two physics subfields, a foundation map for each subfield, and annotations of unfamiliar basic terms, assumed foundations, and introductory sources. | Each example specifies what background a newcomer needs and reliable introductory sources for it. |
-| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python core library: document import, source navigation, foundation explanations, a contextual glossary, and guided return to the full text. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
+| P1 — Terminology and foundations assistant | Delivered as an Agent Skill with the Python standard-library helper: document import, source navigation, foundation explanations, a contextual glossary, and guided return to the full text. | A reviewer can trace explanations to sources and check that the necessary basic concepts are covered. |
 | P2 — Personalized gap diagnosis | A field foundation map, prerequisite relationships, the reader's stated background, and a record of what has been explained; a first version of the arXiv HTML reading interface. | The system can support readers who cannot name their gaps, while avoiding unnecessary repetition of known foundations. |
 | P3 — Feedback-driven reading loop | Step-by-step planning in the reading interface that responds to reader feedback and unfolds prerequisites on demand. | The workflow respects its budget, can terminate, and keeps the reader anchored to the original passage. |
 | P4 — Cross-subfield evaluation | Comparison with a static glossary, ordinary RAG, and a fixed expert reading guide. | Background coverage, explanation accuracy, and time to get past blocked passages are compared under comparable conditions. |
 | P5 — Neighboring disciplines | Replaceable domain resources, terminology, evidence criteria, and evaluation criteria. | The adapted workflow is evaluated on held-out tasks in the new domain. |
 
-**Initial MVP scope:** P1–P3, supported by the curated examples from P0. All implementation and evaluation phases are currently pending.
+**Current delivery:** the first local prototype for personal reading trials. The installation and commands below are available; the P2–P3 web interface and subsequent evaluation remain planned. This does not establish a demonstrated comprehension benefit.
 
 ## Evaluation plan
 
@@ -140,16 +140,58 @@ These are design references, not integrated dependencies or claims of affiliatio
 
 Reusing these ideas does not itself establish a novel research contribution. Code, model, and data licenses will need to be checked before adopting specific components.
 
+## Install and use
+
+Requires Python 3.9+. No `pip install` or model API key is needed by the helper. Explanations use your existing Claude Code or Codex environment.
+
+From the repository root:
+
+```sh
+sh scripts/install.sh
+```
+
+The installer copies the Skill to `~/.claude/skills/paper-foundations/` and `${CODEX_HOME:-$HOME/.codex}/skills/paper-foundations/`, preserving unrelated destination files. Restart the host, then ask:
+
+> Use paper-foundations to help me read this paper. I am new to this field and cannot follow this passage. Explain the necessary foundations, then take me back to the full paper.
+
+Supply an arXiv link or local PDF and the sentence that blocked you; a technical question is optional. Before installation, you can also ask the host to read the repository's [SKILL.md](skills/paper-foundations/SKILL.md) directly.
+
+Run the helper separately to inspect acquisition and navigation:
+
+```sh
+python3 skills/paper-foundations/scripts/paperread.py fetch 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py locate 2610.27436v1 "How does a localized, non-Hermitian defect affect"
+python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
+python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
+```
+
+Private data defaults to `~/.paperread/`; override it with `PAPERREAD_HOME`. Both hosts share that profile by default. Cached fetches make no network requests. An unversioned ID uses the highest cached version; add `--refresh` to check for a newer version. Cache names replace `/` in legacy IDs with `_`.
+
+For PDF-only papers, the helper saves the PDF and the host reads it directly using page locations. The script does not parse PDFs or generate explanations; the host writes `outline.md` after reading the paper. Marking a concept `known` requires `--source` recording explicit reader confirmation; an explanation alone is only `explained`.
+
+```sh
+python3 -B -m unittest discover -s tests -v
+```
+
+See [implementation.md](docs/implementation.md) for the specification and [validation.md](docs/validation.md) for checks and limitations (Chinese).
+
 ## Repository contents
 
 ```text
 an-agent-for-paper-reading/
-├── README.md          # English overview and roadmap
-├── README.zh-CN.md    # Chinese overview and roadmap
-└── .gitignore         # Local artifacts, credentials, and private data exclusions
+├── README.md / README.zh-CN.md
+├── docs/implementation.md          # Step 1 specification
+├── docs/validation.md              # Checks and known limitations
+├── skills/paper-foundations/
+│   ├── SKILL.md                    # Host-agent workflow
+│   ├── references/                 # Explanation rules, template, foundation map
+│   └── scripts/paperread.py        # Standard-library helper
+├── scripts/install.sh              # Copy installation for both hosts
+├── tests/                          # Offline tests and hand-authored HTML
+└── examples/                       # Explanation smoke tests with stated assumptions
 ```
 
-There is no installation or run command yet. The next step is to curate passages that newcomers cannot follow, annotate their essential terms and foundational dependencies, and establish the source-location format and explanation-quality criteria before implementation.
+Full paper caches and reader profiles stay outside the repository. Examples check the workflow and do not replace actual reader trials.
 
 ## License
 

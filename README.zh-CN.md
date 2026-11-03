@@ -4,7 +4,7 @@
 
 一个以物理为基础、帮助读者进入陌生研究领域的论文阅读 Agent，通过补充必要的基本术语和基础知识，帮助读者理解原本读不懂的论文。
 
-> **当前状态：设计阶段。** 本仓库目前包含项目介绍和开发路线图，尚未实现 Agent、用户界面或评测流程。
+> **当前状态：第一步本地原型。** 已提供 Claude Code / Codex 可用的 Skill、Python 标准库工具和离线测试。讲解由宿主 Agent 完成；网页阅读界面和读者试用评估尚未实现。
 
 ## 为什么做这个项目
 
@@ -84,15 +84,15 @@ flowchart TD
 | 规划 | 在询问背景、解释、展开更前面的知识、返回原文和停止之间选择下一步。 |
 | 回到全文 | 把补充的基础对应回卡住的句子、公式和图表，说明这一段在全文中的作用和前后衔接，标出后文再次用到这些概念的位置，带读者回到原处继续读。 |
 
-这些是计划中的模块边界，并非已经实现的软件组件。初版可采用结构化记录和小型本地数据库，无需一开始部署专用图数据库。
+以上是整体模块边界。第一步已实现论文缓存、原文定位、档案和记录工具，其余理解与讲解工作由宿主 Agent 按 Skill 执行；数据保存在本地 JSON / JSONL 中。
 
 ## 落地形式
 
-核心逻辑放在一个 Python 包里，包括文档处理、术语与基础抽取、领域基础地图、讲解生成和用词检查。各种使用形式只是外层；模型调用通过统一接口接入，可以使用 Claude、GPT 等模型。计划分两步落地：
+第一步采用 Skill 加单文件 Python 工具：Claude Code / Codex 负责理解、检索与讲解，工具负责缓存、解析、定位及读写记录，不另行调用模型 API。后续网页界面可在这些模块边界上继续扩展：
 
 | 步骤 | 形式 | 用途 |
 | --- | --- | --- |
-| 第一步（P0–P1） | Agent Skill（`SKILL.md` 工作流）加 Python 核心库，可在 Claude Code 和 Codex 中使用；读者背景和讲解记录保存在本地 JSON 文件中。 | 用 P0 样例快速迭代讲解质量：从哪个基础概念讲起、只取相关部分、简单而严谨、只用读者懂的词。 |
+| 第一步（P0–P1） | Agent Skill（`SKILL.md` 工作流）加 Python 标准库工具，可在 Claude Code 和 Codex 中使用；读者背景和讲解记录保存在本地 JSON / JSONL 文件中。 | 从真实阅读卡点迭代讲解质量：从哪个基础概念讲起、只取相关部分、简单而严谨、只用读者懂的词。 |
 | 第二步（P2–P3） | 基于 arXiv HTML 的本地网页阅读界面：左侧原文，右侧讲解，顶部显示领域基础地图，并提供“还是不懂”“卡在这个词”“这个我会”等反馈按钮。 | 支持选中一句话求助、把讲解对应到原文的句子和公式，以及在基础地图上标出自己的位置。 |
 
 选择 arXiv HTML，是因为物理论文大多发布在 arXiv 上，其 HTML 版由 LaTeX 源码转换而来，段落和公式带有固定编号（如 `S2.p3`、`S2.E1`），讲解可以准确挂到原文位置上，无需解析 PDF。论文没有 HTML 版时，退回 LaTeX 源码或 PDF 解析。网页界面稳定后，可再包装成在 arxiv.org 页面上直接使用的浏览器扩展；MCP server、Zotero 插件等形式以后按需增加。
@@ -102,13 +102,13 @@ flowchart TD
 | 阶段 | 交付内容 | 完成标准 |
 | --- | --- | --- |
 | P0 — 入门障碍样例 | 从两个物理子领域选择段落，为每个子领域整理基础领域地图，并标注陌生基本术语、默认基础和入门来源。 | 明确新读者需要补充哪些基础，以及可靠的入门来源。 |
-| P1 — 术语与基础补全助手 | 以 Agent Skill 和 Python 核心库提供：文档导入、来源导航、基础概念讲解、上下文术语表和回到全文的引导。 | 审核者可追溯讲解来源，并检查必要基础概念是否覆盖。 |
+| P1 — 术语与基础补全助手 | 以 Agent Skill 和 Python 标准库工具提供：文档导入、来源导航、基础概念讲解、上下文术语表和回到全文的引导。 | 审核者可追溯讲解来源，并检查必要基础概念是否覆盖。 |
 | P2 — 个性化缺口诊断 | 领域基础地图、前置关系、读者自述的背景和讲解记录；搭建基于 arXiv HTML 的阅读界面初版。 | 能帮助尚不能说清缺口的读者，同时避免重复讲解已掌握的基础。 |
 | P3 — 按反馈展开的阅读闭环 | 在阅读界面中根据读者反馈逐步规划，按需展开前置知识。 | 流程遵守预算、能够终止，始终围绕原文段落，不把读者带离太远。 |
 | P4 — 跨子领域评测 | 与静态术语表、普通 RAG 和固定专家阅读指南比较。 | 在可比条件下比较基础覆盖、解释准确性，以及读通卡住段落所需的时间。 |
 | P5 — 相邻学科扩展 | 可替换的领域资源、术语、证据标准和评价规则。 | 在新领域留出的任务上重新验证适配后的流程。 |
 
-**初始 MVP 范围：** 基于 P0 的人工样例，实现 P1–P3。所有实现和评测阶段目前均待完成。
+**当前交付：** 先完成上述第一步本地原型，供个人阅读试用。下方的安装与命令已经可用；P2–P3 的网页界面及后续评测仍是计划，不能据此声称理解效果已经得到验证。
 
 ## 评测计划
 
@@ -140,16 +140,58 @@ flowchart TD
 
 复用这些思路本身不构成新的研究贡献。采用具体组件前，需要分别核对代码、模型和数据的许可。
 
+## 安装与使用
+
+需要 Python 3.9+，无需 `pip install`，工具不需要模型 API key。讲解使用你已有的 Claude Code 或 Codex 环境。
+
+在仓库根目录运行：
+
+```sh
+sh scripts/install.sh
+```
+
+安装器将 Skill 复制到 `~/.claude/skills/paper-foundations/` 和 `${CODEX_HOME:-$HOME/.codex}/skills/paper-foundations/`，保留目标目录中的其他文件。重启宿主后，可以说：
+
+> 使用 paper-foundations 帮我读这篇论文。我刚接触这个领域，这一段看不懂。请补必要基础，再带我回到全文。
+
+附上 arXiv 链接或本地 PDF，以及卡住的句子；不必先提出专业问题。也可以在安装前直接让宿主读取仓库中的 [SKILL.md](skills/paper-foundations/SKILL.md)。
+
+工具可单独运行，用于检查获取和定位：
+
+```sh
+python3 skills/paper-foundations/scripts/paperread.py fetch 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py locate 2610.27436v1 "How does a localized, non-Hermitian defect affect"
+python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
+python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
+```
+
+数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
+
+只有 PDF 时，工具保存 PDF，由宿主直接阅读并使用页码定位。脚本不解析 PDF，也不自行生成解释；`outline.md` 由宿主通读论文后写入。`known` 状态必须附 `--source`，记录读者明确确认的依据；讲过只记为 `explained`。
+
+```sh
+python3 -B -m unittest discover -s tests -v
+```
+
+实现约定见 [implementation.md](docs/implementation.md)，验收结果和边界见 [validation.md](docs/validation.md)。
+
 ## 仓库内容
 
 ```text
 an-agent-for-paper-reading/
-├── README.md          # 英文项目介绍与路线图
-├── README.zh-CN.md    # 中文项目介绍与路线图
-└── .gitignore         # 本地产物、凭据和私有数据的排除规则
+├── README.md / README.zh-CN.md
+├── docs/implementation.md          # 第一步实现方案
+├── docs/validation.md              # 验收记录与已知边界
+├── skills/paper-foundations/
+│   ├── SKILL.md                    # 宿主 Agent 的工作流
+│   ├── references/                 # 讲解规则、模板、领域基础地图
+│   └── scripts/paperread.py        # 标准库工具
+├── scripts/install.sh              # 复制安装到两个宿主
+├── tests/                          # 离线测试与手写 HTML 样例
+└── examples/                       # 标明背景假设的讲解试跑
 ```
 
-目前没有安装或运行命令。下一步是收集新读者看不懂的段落，标注其中的必要术语与基础知识依赖，确定来源定位格式和讲解质量的评价标准，再开始实现。
+论文全文缓存和读者档案不进入仓库。示例用于检查工作流，不能代替真实读者试用。
 
 ## 许可证
 

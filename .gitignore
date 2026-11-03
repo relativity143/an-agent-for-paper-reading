@@ -24,6 +24,7 @@ dist/
 # Local caches and private research material
 .cache/
 .local/
+.paperread/
 data/raw/
 data/private/
 eval_private/
