@@ -1,4 +1,4 @@
-# An Agent on Paper Reading
+# An Agent for Paper Reading
 
 [English](README.md) | **简体中文**
 
