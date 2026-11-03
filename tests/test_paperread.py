@@ -196,6 +196,18 @@ class SentenceTests(unittest.TestCase):
             "Next result!",
         ])
 
+    def test_sentence_can_start_with_inline_math(self):
+        self.assertEqual(
+            paperread.split_sentences(r"$n_{\downarrow}$. ${\cal T}$ symmetry requires"),
+            [r"$n_{\downarrow}$.", r"${\cal T}$ symmetry requires"],
+        )
+
+    def test_math_internal_periods_stay_protected_before_math_leading_sentence(self):
+        self.assertEqual(
+            paperread.split_sentences("Use $x. Y$. $z. W$ follows."),
+            ["Use $x. Y$.", "$z. W$ follows."],
+        )
+
     def test_sentence_boundaries_question_mark_parenthesis_and_bracket(self):
         self.assertEqual(
             paperread.split_sentences("Ready? Yes! (A caveat.) [A source.]"),
@@ -261,6 +273,65 @@ class NavigationTests(unittest.TestCase):
         self.assertLess(ids.index("S1.F1"), ids.index("S1.E2"))
         self.assertLess(ids.index("S1.E2"), ids.index("S1.E3"))
         self.assertLess(ids.index("S1.E3"), ids.index("S2.p1"))
+
+
+class TableRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.data = paperread.parse_html('''
+            <main class="ltx_page_main"><section class="ltx_section" id="S2">
+              <h2 class="ltx_title">2 Results</h2>
+              <div class="ltx_para" id="S2.p1"><p>Winding before the table.</p></div>
+              <figure class="ltx_table" id="S2.T1">
+                <table><tr><td>1</td></tr></table>
+                <figcaption>Table 1: Winding comparison.</figcaption>
+              </figure>
+              <div class="ltx_para" id="S2.p2"><p>Winding after the table.</p></div>
+              <figure class="ltx_figure" id="S2.F1">
+                <figcaption>Figure 1: Winding paths.</figcaption>
+              </figure>
+            </section></main>
+        ''')
+
+    def test_table_preserves_caption_section_and_document_order(self):
+        self.assertEqual([f["id"] for f in self.data["figures"]], ["S2.T1", "S2.F1"])
+        table = self.data["figures"][0]
+        self.assertEqual(table["caption"], "Table 1: Winding comparison.")
+        self.assertEqual(table["section"], "S2")
+        before, after = self.data["paragraphs"]
+        self.assertLess(before["end_order"], table["order"])
+        self.assertLess(table["order"], after["order"])
+
+    def test_find_searches_table_captions_and_respects_after(self):
+        results = paperread.find(self.data, "WINDING", after="S2.p1")
+        self.assertEqual([r["id"] for r in results], ["S2.T1", "S2.p2", "S2.F1"])
+        self.assertEqual(results[0]["type"], "figure")
+        self.assertEqual(results[0]["section"], "S2")
+        self.assertIn("Winding comparison", results[0]["snippet"])
+        self.assertEqual(
+            [r["id"] for r in paperread.find(self.data, "winding", after="S2.p2")],
+            ["S2.F1"],
+        )
+
+    def test_nested_table_and_figure_captions_merge_into_the_parent(self):
+        for outer, inner in (("ltx_table", "ltx_figure"), ("ltx_figure", "ltx_table")):
+            with self.subTest(outer=outer, inner=inner):
+                data = paperread.parse_html('''
+                    <main class="ltx_page_main"><section class="ltx_section" id="S2">
+                      <figure class="%s" id="S2.visual1">
+                        <figure class="%s" id="S2.visual1.a">
+                          <figcaption>Panel A: Winding detail.</figcaption>
+                        </figure>
+                        <figcaption>Overall comparison.</figcaption>
+                      </figure>
+                    </section></main>
+                ''' % (outer, inner))
+                self.assertEqual([f["id"] for f in data["figures"]], ["S2.visual1"])
+                self.assertEqual(data["figures"][0]["section"], "S2")
+                self.assertEqual(
+                    data["figures"][0]["caption"],
+                    "Panel A: Winding detail. Overall comparison.",
+                )
 
 
 class StoreCase(unittest.TestCase):

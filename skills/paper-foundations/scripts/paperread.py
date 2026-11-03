@@ -145,6 +145,10 @@ def is_section(node):
     return node.tag == "section" and bool(node.classes & SECTION_CLASSES)
 
 
+def is_figure(node):
+    return node.tag == "figure" and bool(node.classes & {"ltx_figure", "ltx_table"})
+
+
 def section_of(node):
     parent = ancestor(node, is_section)
     return parent.attrs.get("id") if parent else None
@@ -188,7 +192,7 @@ def split_sentences(text):
     text = normalize(text)
     protected = [(m.start(), m.end()) for m in re.finditer(r"\$[^$]*\$|⟨[^⟩]*⟩", text)]
     cuts = []
-    for match in re.finditer(r"[.?!]\s+(?=[A-Z(\[])", text):
+    for match in re.finditer(r"[.?!]\s+(?=[A-Z(\[$])", text):
         position = match.start()
         if any(start <= position < end for start, end in protected):
             continue
@@ -260,7 +264,7 @@ def parse_html(html):
             parent = ancestor(eq, lambda p: p in paragraph_ids)
             paragraph = paragraph_ids.get(parent)
             result["equations"].append({"id": eq.attrs["id"], "latex": r" \\ ".join(maths), "paragraph": paragraph, "section": section_of(eq), "order": eq.order})
-        if node.tag == "figure" and node.has("ltx_figure") and not ancestor(node, lambda p: p.tag == "figure" and p.has("ltx_figure")):
+        if is_figure(node) and not ancestor(node, is_figure):
             captions = [n for n in walk(node) if n.tag == "figcaption" and not ancestor(n, lambda p: p.tag == "figcaption")]
             result["figures"].append({"id": node.attrs.get("id", "figure-%s" % node.order), "caption": normalize(" ".join(render(n) for n in captions)), "section": section_of(node), "order": node.order})
     for paragraph in result["paragraphs"]:
