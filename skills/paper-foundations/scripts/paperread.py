@@ -28,6 +28,7 @@ import xml.etree.ElementTree as ET
 
 USER_AGENT = "paper-foundations/0.1 (+https://github.com/relativity143/an-agent-for-paper-reading)"
 PARSER_VERSION = 2
+LOG_TYPES = ("sentence", "overview", "deep")
 MAX_DOWNLOAD = 64 * 1024 * 1024
 ARXIV_RE = re.compile(r"(?P<id>\d{4}\.\d{4,5}|[a-z][a-z.\-]*/\d{7})(?P<version>v[1-9]\d*)?", re.I)
 SKIP_CLASSES = {"ltx_bibliography", "ltx_page_navbar", "ltx_page_logo", "ltx_authors", "ltx_dates"}
@@ -617,15 +618,23 @@ class Store:
         path = self.resolve(paper) / "log.jsonl"
         if not isinstance(record, dict):
             raise PaperError("A log entry must be a JSON object.")
-        if record.get("type", "sentence") not in ("sentence", "overview"):
-            raise PaperError("Log type must be sentence or overview.")
-        if record.get("type") == "overview" and record.get("where") is not None:
+        record_type = record.get("type", "sentence")
+        if record_type not in LOG_TYPES:
+            raise PaperError("Log type must be sentence, overview or deep.")
+        if record_type == "overview" and record.get("where") is not None:
             raise PaperError("An overview log must have where=null.")
-        for key in ("gaps", "explained", "unexpanded_terms"):
+        if record_type == "deep":
+            if type(record.get("segment")) is not int or record["segment"] < 1:
+                raise PaperError("A deep log requires a positive integer segment (starting at 1).")
+        elif "segment" in record:
+            raise PaperError("Only deep logs may include segment.")
+        for key in ("gaps", "explained", "unexpanded_terms", "uses"):
             if key in record and (not isinstance(record[key], list) or not all(isinstance(x, str) for x in record[key])):
                 raise PaperError("Log field %s must be an array of strings." % key)
         entry = {"time": now(), "type": "sentence", "where": None, "quote": "", "gaps": [], "explained": [],
                  "unexpanded_terms": [], "next": None, "feedback": None}
+        if record_type == "deep":
+            entry["uses"] = []
         entry.update(record)
         encoded = json.dumps(entry, ensure_ascii=False, allow_nan=False) + "\n"
         with file_lock(path.parent / ".log.lock"):
@@ -633,22 +642,29 @@ class Store:
                 stream.write(encoded)
         return entry
 
-    def log_show(self, paper, last=10):
+    def log_show(self, paper, last=10, record_type=None):
         path = self.resolve(paper) / "log.jsonl"
         if last < 0:
             raise PaperError("--last must be nonnegative; 0 reads all records.")
+        if record_type is not None and record_type not in LOG_TYPES:
+            raise PaperError("Log type must be sentence, overview or deep.")
         if not path.exists():
             return []
-        with file_lock(path.parent / ".log.lock"):
-            with path.open(encoding="utf-8") as stream:
-                lines = deque((line for line in stream if line.strip()), maxlen=last or None)
         try:
-            records = [json.loads(line) for line in lines]
-            if not all(isinstance(record, dict) for record in records):
-                raise ValueError("Expected log objects")
-            for record in records:
-                record.setdefault("type", "sentence")
-            return records
+            records = deque(maxlen=last or None)
+            with file_lock(path.parent / ".log.lock"):
+                with path.open(encoding="utf-8") as stream:
+                    for line in stream:
+                        if not line.strip():
+                            continue
+                        record = json.loads(line)
+                        if not isinstance(record, dict):
+                            raise ValueError("Expected log objects")
+                        record.setdefault("type", "sentence")
+                        # Filter before taking the tail, so intervening types do not hide progress.
+                        if record_type is None or record["type"] == record_type:
+                            records.append(record)
+            return list(records)
         except ValueError as error:
             raise PaperError("Invalid JSON in log.jsonl; records were left unchanged.") from error
 
@@ -829,6 +845,8 @@ def command_parser():
     show = log.add_parser("show")
     show.add_argument("paper")
     show.add_argument("--last", type=int, default=10, help="Last N records; 0 reads all records")
+    show.add_argument("--type", dest="record_type", choices=LOG_TYPES,
+                      help="Filter log type before selecting the last N records")
     return parser
 
 
@@ -839,7 +857,7 @@ def run(args, store):
         return store.profile() if args.action == "show" else store.update_profile(args.action, args)
     if args.command == "log":
         if args.action == "show":
-            return store.log_show(args.paper, args.last)
+            return store.log_show(args.paper, args.last, args.record_type)
         return store.log_add(args.paper, json.loads(sys.stdin.read() if args.json == "-" else args.json))
     path, data = store.load(args.paper, require_html=args.command != "outline-path")
     if args.command == "outline-path":

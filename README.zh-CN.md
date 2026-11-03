@@ -24,7 +24,7 @@
 4. **补充必要基础。** 对卡住的句子，追溯到读者能理解的基础概念，只提取与当前句子相关的部分，用简明而严谨的语言搭出概念图景，附可靠来源，必要时再往前展开。导读里已经建立的图景直接沿用，不重复讲。术语表只作辅助。
 5. **回到全文。** 讲完先回到卡住的那一句，把补充的基础逐一对应到原句中的词、公式和图表；再对照导读说明这一段在全文主线中起什么作用、与前后文如何衔接，并标出后文再次用到这些概念的地方；然后让读者从原处接着往下读。
 6. **根据反馈调整。** 读者仍然卡住时，找到卡在哪里，继续展开；这段读通了，就接着往下读。
-7. **读完后的完整讲解（第二部分）。** 读者读完全文后，Agent 提出把核心原理或实验严格地完整讲一遍。这一遍不再为读懂而简化：写全模型或实验设定、符号与约定、近似及适用条件，按逻辑顺序走完关键推导或测量流程，说明每个主要结论由哪些计算、测量或图支持，支持到什么程度，局限在哪里。第一部分讲过的基础直接使用，不再重讲，只标出在哪里讲过。讲解分段给出，每段末尾列出这段用到的基础；读者读顺了就说“继续”，卡住了就说卡在哪里，Agent 再按第一部分的方式补讲。它有两个用途：一是形成完整的学习闭环，把逐句补上的零散基础串成整体；二是让读者自己判断学得怎么样。判断由读者自己做，系统不出题、不打分。
+7. **读完后的完整讲解（第二部分）。** 读者表示读完全文后，Agent 只提议一次，等同意后再讲；读者明确要求完整讲解时直接给目录。这一遍不再为读懂而简化：写全模型或实验设定、符号与约定、近似及适用条件，按逻辑顺序走完关键推导或测量流程，说明每个主要结论由哪些计算、测量或图支持，支持到什么程度，局限在哪里。第一部分讲过且状态为 `explained` 或 `known` 的基础可以直接用，标出讲过的位置；`unsure` 不能当作已会。先给目录，之后一次只讲一段并等待回复，每段末尾列出用到的基础。“继续”只推进讲解；明确表示本段看懂或读顺时，才按确认范围更新本段 `uses` 中的概念，保存原话。卡住时只把相关概念记为 `unsure`，按第一部分补讲，再回到当前段。它既把逐句补上的零散基础串成整体，也让读者自己判断学得怎么样；系统不出题、不打分，不替读者宣称已经理解。
 
 例如，一段话连续出现三个陌生术语，而这些术语的定义又依赖一个读者从未学过的概念。系统应识别这项共同基础，用读者能够理解的语言讲清，再解释各术语在文中的含义，并引导读者重新理解这一段。
 
@@ -165,6 +165,8 @@ sh scripts/install.sh
 
 附上 arXiv 链接或本地 PDF，可以同时给出卡住的句子；不必先提出专业问题。首次阅读时，Skill 先给一屏以内的全文导读；已经带着具体句子时，先用三到五行介绍研究问题、核心模型或实验及主要结论，再讲解该句。后续直接沿用导读中的图景，按你的要求再给导读。也可以在安装前直接让宿主读取仓库中的 [SKILL.md](skills/paper-foundations/SKILL.md)。
 
+读完后可以说：“请把这篇论文的原理或实验完整、严格地再讲一遍。”Skill 先给目录，再一次讲一段并等你回复。“继续”表示往下讲；“这段看懂了／读顺了”才是明确确认理解；指出卡点后会针对补讲，再回到当前段。仅说读完了，只会得到一次可选择的邀请，不会自动开始完整讲解。
+
 工具可单独运行，用于检查获取和定位：
 
 ```sh
@@ -176,12 +178,14 @@ python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
-python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --last 0
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type overview --last 1
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type sentence --last 5
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type deep --last 5
 ```
 
 只有 `text` 输出纯文本，按原文顺序保留节标题、带编号的段落、含 LaTeX 的行间公式以及图表标题；`--section` 包含该节及其子节，完整结构仍可查看 `paper.json`。查找后文时，概念名及其 LaTeX 符号都要搜，再核对上下文中的含义。`ref` 接受参考文献编号或条目 ID（如 `26` 或 `bib.bib19`），返回本篇条目及保存的链接；须实际读取并核对所引来源，才能用它支持讲解。
 
-`log show --last 0` 返回完整记录，避免导读被较新的逐句讲解挤出近期记录而漏判。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认使用 `type: "sentence"`。记录讲过什么不等于确认读者已经理解。
+`log show --type overview --last 1` 先筛选类型再取最后一条，避免导读被较新的逐句讲解挤出近期记录而漏判。不传 `--type` 时包含所有类型；`--last 0` 返回全部匹配记录。旧记录缺少 `type` 时按 `sentence` 处理，不改写旧日志。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认为 `sentence`。第二部分使用 `type: "deep"`，须有从 1 开始的正整数 `segment`，以及字符串数组 `uses`（默认 `[]`）；其他类型不得带 `segment`。反馈另行追加，沿用原段号并保留原话，因此反馈行不能算作新讲解段。讲过以及“继续”都不等于确认读者已经理解。讲解与反馈记录示例见 [输出模板](skills/paper-foundations/references/output-template.md)。
 
 数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；旧 HTML 缓存会从本地 `source.html` 重新解析，保留元数据、全文脉络和记录，源文件缺失时才提示 `fetch --refresh`。不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
 
@@ -192,6 +196,8 @@ python3 -B -m unittest discover -s tests -v
 ```
 
 实现约定见 [implementation.md](docs/implementation.md)，验收结果和边界见 [validation.md](docs/validation.md)。
+
+[第二部分开发样例](examples/2610.27436v1-deep-trial.md)展示目录和五段讲解；它用于检查输出结构与证据边界，没有真实读者逐段反馈。
 
 ## 仓库内容
 

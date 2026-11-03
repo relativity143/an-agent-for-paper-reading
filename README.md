@@ -24,7 +24,7 @@ Physics provides the initial tasks and correctness checks. The design is intende
 4. **Explain the necessary foundations.** For the blocked sentence, trace back to foundational concepts the reader can grasp, extract only what the sentence relies on, and build a simple, rigorous conceptual picture with reliable sources, unfolding earlier prerequisites when needed. Reuse the picture already built in the overview instead of repeating it. A glossary is only a supporting aid.
 5. **Return to the full text.** First go back to the sentence that blocked reading and map the new background onto its words, equations, and figures. Then, with the overview as reference, explain what the passage does in the paper's main line and how it connects to the surrounding text, and point out later places that reuse these concepts. Finally, let the reader continue from where they stopped.
 6. **Adjust to feedback.** If the reader is still stuck, find where and unfold further; once the passage makes sense, continue reading.
-7. **A full explanation after reading (Part 2).** Once the reader has finished the paper, the agent offers to walk through the core theory or experiment again, rigorously and completely. This pass no longer simplifies for readability: it states the full model or experimental setup, notation and conventions, approximations and their conditions; follows the key derivation or measurement procedure in logical order; and shows which calculations, measurements, or figures support each main conclusion, how strongly, and with what limits. Foundations explained in Part 1 are used directly, not re-explained, with a pointer to where they were covered. The explanation comes in segments, each ending with the foundations it relies on; the reader says “continue” when it reads smoothly, or names where they are stuck, and the agent fills that in the Part 1 way. It serves two purposes: it closes the learning loop by tying the piecemeal foundations into a whole, and it lets readers judge for themselves how much they have learned. The judgment is the reader's own; the system asks no questions and gives no scores.
+7. **A full explanation after reading (Part 2).** Once the reader says they have finished the paper, the agent offers this walkthrough once and waits for agreement. An explicit request for a full explanation goes directly to the outline. This pass no longer simplifies for readability: it states the full model or experimental setup, notation and conventions, approximations and their conditions; follows the key derivation or measurement procedure in logical order; and shows which calculations, measurements, or figures support each main conclusion, how strongly, and with what limits. Part 1 foundations marked `explained` or `known` can be used directly with a pointer to where they were covered; `unsure` is not treated as understood. The agent first gives an outline, then explains one segment at a time and waits for a response, listing the foundations each segment uses. “Continue” only advances the explanation. Explicit confirmation that a segment makes sense can update its `uses` concepts within the scope of that confirmation, with the reader's words saved as evidence. A named difficulty marks the relevant concept `unsure`; the agent explains it in the Part 1 way and returns to the current segment. This ties the piecemeal foundations into a whole and lets readers judge what they have learned; the agent gives no tests or scores and does not claim understanding on their behalf.
 
 For example, a paragraph may contain three unfamiliar terms whose definitions depend on a concept the reader has never studied. The agent would identify that shared foundation, explain it using accessible language, clarify each term in context, and guide the reader through the paragraph again.
 
@@ -165,6 +165,8 @@ The installer copies the Skill to `~/.claude/skills/paper-foundations/` and `${C
 
 Supply an arXiv link or local PDF, optionally with the sentence that blocked you; a technical question is optional. On first reading, the Skill gives a full-paper overview within one screen. If you already supplied a sentence, it first gives a three-to-five-line overview of the question, model or experiment, and main conclusions, then helps with that sentence. Later sessions reuse that overview unless you ask for it again. Before installation, you can also ask the host to read the repository's [SKILL.md](skills/paper-foundations/SKILL.md) directly.
 
+After reading, ask: “Give me a complete, rigorous walkthrough of the theory or experiment.” The Skill starts with an outline, explains one segment at a time, and waits for your reply. “Continue” moves on; “this segment makes sense” explicitly confirms understanding; naming a difficulty leads to a focused explanation and a return to that segment. Simply saying you finished the paper prompts one optional invitation, not an automatic walkthrough.
+
 Run the helper separately to inspect acquisition and navigation:
 
 ```sh
@@ -176,12 +178,14 @@ python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
-python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --last 0
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type overview --last 1
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type sentence --last 5
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type deep --last 5
 ```
 
 `text` is the only command that outputs plain text. It preserves the reading order of section titles, numbered paragraphs, display equations with LaTeX, and figure/table captions; `--section` includes that section and its subsections. The full structure remains available in `paper.json`. Search both a concept's name and its LaTeX notation, then check the meaning in context. `ref` accepts a reference number or entry ID, such as `26` or `bib.bib19`, and returns the paper's bibliography entry and saved links; read and verify the cited source before using it to support an explanation.
 
-`log show --last 0` returns the complete log, so an earlier overview is not missed among recent sentence explanations. The host records an overview with `type: "overview"` and `where: null`; sentence explanations use the default `type: "sentence"`. Logging an explanation never establishes that the reader understands it.
+`log show --type overview --last 1` finds an earlier overview even after many sentence explanations: type filtering happens before selecting the last N records. Omit `--type` to include all types; `--last 0` returns all matching records. Old records without `type` count as `sentence`, without rewriting the log. The host records an overview with `type: "overview"` and `where: null`; sentence explanations default to `sentence`. Part 2 uses `type: "deep"`, a positive integer `segment` starting at 1, and a `uses` string array (default `[]`); other types cannot include `segment`. Feedback is appended with the same segment number and the reader's original words, so feedback rows do not count as new segments. Logging an explanation or receiving “continue” never establishes understanding. See the [output templates](skills/paper-foundations/references/output-template.md) for explanation and feedback records.
 
 Private data defaults to `~/.paperread/`; override it with `PAPERREAD_HOME`. Both hosts share that profile by default. Cached fetches make no network requests. Older HTML caches are updated by reparsing the saved `source.html` locally, preserving metadata, outlines, and logs; if that source is missing, the tool requests `fetch --refresh`. An unversioned ID uses the highest cached version; add `--refresh` to check for a newer version. Cache names replace `/` in legacy IDs with `_`.
 
@@ -192,6 +196,8 @@ python3 -B -m unittest discover -s tests -v
 ```
 
 See [implementation.md](docs/implementation.md) for the specification and [validation.md](docs/validation.md) for checks and limitations (Chinese).
+
+The [Part 2 development example](examples/2610.27436v1-deep-trial.md) contains an outline and five segments in Chinese. It checks output structure and evidence boundaries; it contains no real reader feedback between segments.
 
 ## Repository contents
 
