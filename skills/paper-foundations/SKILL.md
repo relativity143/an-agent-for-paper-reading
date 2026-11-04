@@ -1,6 +1,6 @@
 ---
 name: paper-foundations
-description: 帮助读者读通论文中卡住的句子或段落，补充这篇论文需要的基础，再回到全文。适用于“这段看不懂”、给出 arXiv 链接求助、想补论文所需基础、“读完了，想完整、严格地再讲一遍原理或实验”、“这篇在领域里是什么位置”或“接下来读什么”。 Help readers with paper passages and necessary foundations, offer a rigorous walkthrough when requested, explain where a paper sits in its field, reuse verified reading history across papers, and suggest what to read next.
+description: 帮助读者读通论文中的卡点，补必要基础并回到全文。适用于 arXiv 或 PDF 阅读求助、“总结一下前面讲过的内容”“给一份术语表”“完整、严格地再讲一遍原理或实验”“这篇在领域里是什么位置”及“接下来读什么”。 Help with paper passages and foundations, recap actual reading history, build a contextual glossary, give a rigorous walkthrough, and guide further reading.
 ---
 
 # Paper Foundations
@@ -15,6 +15,7 @@ description: 帮助读者读通论文中卡住的句子或段落，补充这篇�
 python3 scripts/paperread.py --help
 python3 scripts/paperread.py profile show
 python3 scripts/paperread.py profile concepts --exclude-paper "2610.27436v1"
+python3 scripts/paperread.py profile concepts --paper "2610.27436v1" --status unsure
 python3 scripts/paperread.py fetch "2610.27436v1"
 python3 scripts/paperread.py text "2610.27436v1"
 python3 scripts/paperread.py text "2610.27436v1" --section S2
@@ -22,9 +23,10 @@ python3 scripts/paperread.py ref "2610.27436v1" 26
 python3 scripts/paperread.py lookup "1002.3895"
 python3 scripts/paperread.py lookup "10.1103/RevModPhys.82.3045"
 python3 scripts/paperread.py outline-path "2610.27436v1"
+python3 scripts/paperread.py glossary-path "2610.27436v1"
 ```
 
-私有数据默认位于 `~/.paperread/`，可用 `PAPERREAD_HOME` 改位置。读者档案和论文缓存、全文脉络、讲解记录保留在此处，不放进仓库。只有 `text` 输出纯文本，其余命令输出 JSON；出错时先处理错误，不把缺失的结果当作已获取的证据。
+私有数据默认位于 `~/.paperread/`，可用 `PAPERREAD_HOME` 改位置。读者档案和论文缓存、全文脉络、术语表、讲解记录保留在此处，不放进仓库。只有 `text` 输出纯文本，其余命令输出 JSON；出错时先处理错误，不把缺失的结果当作已获取的证据。`outline-path` 与 `glossary-path` 只返回路径和存在状态，内容由宿主写入。
 
 工具提取图注和公式文本，不解析图中的曲线、坐标或装置。涉及图像内容时，用宿主能力查看原图或 PDF；只读了图注时不能声称已看过图。PDF 不可读时应说明限制。
 
@@ -34,7 +36,7 @@ python3 scripts/paperread.py outline-path "2610.27436v1"
 
 档案较大时，先在本地过滤 `profile show` 的输出，只取背景、领域和本轮需要的记录；概念用 `profile concepts` 的状态与论文筛选，不把整份档案或全部历史日志带入上下文。概念记录表示当前保留的状态与出处，不代表完整的跨篇学习历史；需要追溯时再读对应论文的日志。
 
-先按读者意图选择阶段：普通导读和卡点阅读走第 1–6 步；只说“读完了”时按第 7 步提议一次。明确要求或已经同意完整讲解时，读取背景、论文脉络和相关日志后直接进入第 7 步。明确问“这篇在领域里是什么位置”或“接下来读什么”时，读取所需的论文、档案和已有 `field` 记录，直接进入第 8 步的对应分支。两者均不要求先提供卡点，也不强制先完成导读或完整讲解。第二部分的回应按第 7 步处理，只有卡住时才转逐句补讲，再回到当前段。没有第一部分的讲解记录就如实说明，不编造已讲基础或出处。
+先按读者意图选择阶段：普通导读和卡点阅读走第 1–6 步；只说“读完了”时按第 7 步提议一次。明确要求或已经同意完整讲解时，读取背景、论文脉络和相关日志后进入第 7 步。只要回顾或术语表时，直接处理第 7 步的回顾分支，完成所请求的内容后等待，不强制进入第二部分。明确问“这篇在领域里是什么位置”或“接下来读什么”时，读取所需的论文、档案和已有 `field` 记录，直接进入第 8 步的对应分支。这些请求不要求先提供卡点或补走其他阶段。第二部分的回应按第 7 步处理，只有卡住时才转逐句补讲，再回到当前段。没有第一部分的讲解记录就如实说明，不编造已讲基础或出处。
 
 1. **读取背景与已有讲解。** 用 `profile show` 读取档案，论文已缓存时用 `log show <paper> --last 5` 查看近期记录。档案为空时，简要列出相关基础领域，邀请读者大致说哪些学过、听过或没接触过；允许跳过，不要求测验或完整自述才开始。只有读者提供了背景，才用 `profile set-background "<原话或忠实概括>"` 和 `profile set-area <领域编号> studied|heard|none` 保存。学过一个领域不等于懂其中每个概念；背景不清楚时，按暂定起点讲并说明可调整。
 
@@ -52,7 +54,17 @@ python3 scripts/paperread.py outline-path "2610.27436v1"
 
 6. **记录讲解与反馈。** 用 `log add <paper> --json -` 从标准输入提交记录，字段见输出模板；逐句讲解使用 `type: "sentence"`（省略时的默认值），导读单独记录为 `overview`。避免把论文原文或读者话语直接拼成 shell 命令。讲解记录不等于掌握证据。按以下状态规则更新档案，读者后续反馈另追加一条记录，保留原话与位置。
 
-7. **完整讲解（第二部分）。** 读者只表示读完全文时，结合当前对话检查是否已提议过，最多提议一次完整讲解，等读者同意；拒绝、沉默或仅到达末段都不能当作同意。读者明确要求“完整、严格地再讲一遍”时，直接给目录，不重复征求确认。按输出模板先列范围、第一部分已讲基础及出处、3 到 8 段目录，然后每次只讲一段，段间等待读者回应；最后一段后按第 8 步补充本篇位置，再等待回应。不得一次发出全部内容或替读者宣称已读懂。
+7. **回顾与完整讲解（第二部分）。** 读者只表示读完全文时，结合当前对话最多提议一次“先回顾和整理术语表，再完整讲解”，等同意；拒绝、沉默或仅到达末段不算同意。已经同意或明确要求完整讲解时，先按[回顾与术语表模板](references/output-template.md#第一部分回顾与术语表)输出，等读者回应再给目录，不重复征求同一授权。说“直接讲／跳过回顾”则直接给目录，不记未发生的回顾。只请求回顾或术语表时只完成所请求的部分，结尾不默认引向第二部分。
+
+   **按实际历史回顾。** 以最近的 `overview` 和 `outline.md` 为主线，读取 `log show <paper> --type sentence --last 0` 与 `profile concepts --paper <paper>`，按原文论证次序合并实际补讲及位置。长日志先本地汇总需要的字段，不整份带入上下文。导读中略提的词不能算补讲；无逐句讲解时说明“第一部分没有卡点讲解”。档案每个概念只保留当前状态及最新出处，论文筛选可能漏掉曾在本篇讲过、后来在他篇更新的概念；以本篇 `sentence` 日志保留讲解历史，再定向核对这些概念的当前档案状态与语义，不能因筛选未命中就抹去历史或推断未讲。`--paper` 与 `--exclude-paper` 互斥，均按同一 arXiv 编号归并版本，可结合 `--status`。
+
+   **术语表与续接。** 按模板生成固定五列的 `glossary.md`，用 `glossary-path <paper>` 定位，写入并核对成功后才称已保存，再记 `recap`；独立只要回顾时不必生成术语表，`terms` 留空。用 `log show <paper> --type recap --last 5` 查最近实际生成的回顾（`feedback` 为空），近五条全是反馈时扩大范围或本地扫描。按日志顺序检查它之后的 `sentence`，不能只比较可能同秒的时间戳；反馈行不重置生成检查点。已有回顾且之后无新 `sentence` 时不主动重复；有新逐句讲解则下次进入第二部分时重新生成，读者明确要求时也可重生成。回顾处“继续”只进入目录，不改状态；指出卡点则仅将相关概念标为 `unsure`，按逐句方式补讲并记 `sentence`，再回到回顾。明确确认理解才按原话范围更新 `known` 并保存依据。邀请或跳过均不写 `recap`；反馈另记一行，字段见模板。
+
+   复用只针对实际已输出的部分：结合 `covered`、`terms`、文件存在与实际输出核对；单独术语表不代表回顾已做，单独回顾也不代表术语表已保存，不能只凭一条 `recap` 判断两者完成。进入完整讲解时补齐仍需的部分，再等待回应；无卡点讲解的回顾也可能有空 `covered`，不能只用数组是否为空判定。跨会话无法确认曾输出回顾时，说明记录不足并补一份简短回顾，不宣称已完成。
+
+   当前回顾中的卡点补讲仍属于同一次入口：补完返回当前回顾，之后“继续”直接进入目录，不因刚写入的 `sentence` 再启动一轮回顾和等待。上述重新生成规则用于之后另行进入第二部分，或读者明确要求重新整理。
+
+   **目录与分段。** 回顾回应后（或读者跳过、已有回顾可复用时）列范围、回顾出处和 3 到 8 段目录；跳过时简列真实讲过的基础及位置。目录可与第一段同轮给出，之后每次只讲一段并等待回应；最后一段后按第 8 步补充本篇位置，再等待回应。不得一次发出全部内容或替读者宣称已读懂。
 
    **先简后严。** 对照原文补全设定、符号与单位、约定、推导或测量流程、近似及其条件，明确第一部分简化了什么、现在补全了什么；最后一段交代结论的证据、支持程度和局限。第一部分已讲且档案中为 `explained` 或 `known` 的基础可直接使用，标明讲过的位置，并记入本段 `uses`；`explained` 仍不等于理解，`unsure` 不能当作已会。未讲过且不熟的词当场解释，缺失基础较多时记入 `gaps` 并补讲。
 

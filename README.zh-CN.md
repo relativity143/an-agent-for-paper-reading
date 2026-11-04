@@ -182,7 +182,7 @@ sh scripts/install.sh
 
 附上 arXiv 链接或本地 PDF，可以同时给出卡住的句子；不必先提出专业问题。首次阅读时，Skill 先给一屏以内的全文导读；已经带着具体句子时，先用三到五行介绍研究问题、核心模型或实验及主要结论，再讲解该句。后续直接沿用导读中的图景，按你的要求再给导读。也可以在安装前直接让宿主读取仓库中的 [SKILL.md](skills/paper-foundations/SKILL.md)。
 
-读完后可以说：“请把这篇论文的原理或实验完整、严格地再讲一遍。”Skill 先给目录，再一次讲一段并等你回复。“继续”表示往下讲；“这段看懂了／读顺了”才是明确确认理解；指出卡点后会针对补讲，再回到当前段。仅说读完了，只会得到一次可选择的邀请，不会自动开始完整讲解。
+读完后可以说：“先给我回顾和术语表，再把这篇论文的原理或实验完整、严格地讲一遍。”请求完整讲解后，Skill 先回顾第一部分实际讲过的内容并给出术语表，等你回复后再给目录，然后一次讲一段并等待反馈；说“跳过回顾”可直接进入目录。“继续”表示往下讲；“这段看懂了／读顺了”才是明确确认理解；指出卡点后会针对补讲，再回到回顾或当前段。仅说读完了，只会得到一次包含回顾和完整讲解的邀请。也可以只要回顾或术语表，不进入第二部分。已有回顾时默认复用；之后有新逐句讲解，或你明确要求重生成，才重新整理。
 
 也可以随时问“这篇在领域里是什么位置”或“接下来读什么”，Skill 会直接处理对应请求。默认在第二部分最后一段后给出本篇位置，再提议一次后续阅读并等待同意。读下一篇时沿用共用档案，同时区分已经确认懂了、讲过未确认和仍不确定的基础。
 
@@ -200,9 +200,12 @@ python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
 python3 skills/paper-foundations/scripts/paperread.py lookup 1002.3895
 python3 skills/paper-foundations/scripts/paperread.py lookup 10.1103/RevModPhys.82.3045
 python3 skills/paper-foundations/scripts/paperread.py profile concepts --exclude-paper 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py profile concepts --paper 2610.27436v1 --status unsure
 python3 skills/paper-foundations/scripts/paperread.py profile concepts --status known
+python3 skills/paper-foundations/scripts/paperread.py glossary-path 2610.27436v1
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type overview --last 1
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type sentence --last 5
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type recap --last 5
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type deep --last 5
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type field --last 5
 ```
@@ -211,11 +214,17 @@ python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --ty
 
 `lookup <DOI|arXiv 编号>` 返回标题、作者、年份、摘要、来源服务和链接。arXiv 编号查 arXiv API；DOI 先查 OpenAlex，摘要缺失时再查 Crossref。结果缓存在 `~/.paperread/lookup/`（或 `PAPERREAD_HOME` 下），命中缓存时可离线复用，`--refresh` 才重新请求。没有摘要时保留 `null`；服务或来源不可用时须说明核实限制。查到标题不等于确认主张：实际读过摘要才可标 `checked: "abstract"`，具体科学结论及 `fulltext` 标记须以原文相关内容的实际核对为依据。
 
-`profile concepts` 列出概念状态及论文、位置，可用 `--status known|explained|unsure` 筛选，以 `--exclude-paper` 排除当前论文，包括同一 arXiv 编号的其他版本。缺少论文来源的记录可用于判断背景，但不能声称是在前一篇讲过的；术语名字相似也不足以证明概念相同或读者已经理解。
+`profile concepts` 列出概念状态及论文、位置，可用 `--status known|explained|unsure` 筛选，再用 `--paper` 选定论文或 `--exclude-paper` 排除论文；后两者互斥，均涵盖同一 arXiv 编号的所有版本。每个概念只保留当前状态及最新出处，按论文筛选不代表完整学习历史。回顾仍以本篇 `sentence` 日志保留真实讲解，再核对相关概念的当前状态，包括最新出处已变成其他论文的概念。缺少论文来源的记录可用于判断背景，但不能声称是在前一篇讲过的；术语名字相似也不足以证明概念相同或读者已经理解。
+
+`glossary-path <paper>` 像 `outline-path` 一样返回私有 `glossary.md` 的路径和是否存在，不生成或解析术语表。宿主写入并核对固定五列：术语或符号、本文中的意思、首次出现、讲过的位置、状态。范围包括第一部分实际讲过的概念与第二部分规划用到的术语，一般 10–20 条；写明符号约定，同词异义分条，PDF 使用核实过的页码，并注明状态是生成时的快照、以当前档案为准。写入成功后才能称已保存。格式见[回顾与术语表模板](skills/paper-foundations/references/output-template.md#第一部分回顾与术语表)。
 
 `log show --type overview --last 1` 先筛选类型再取最后一条，避免导读被较新的逐句讲解挤出近期记录而漏判。不传 `--type` 时包含所有类型；`--last 0` 返回全部匹配记录。旧记录缺少 `type` 时按 `sentence` 处理，不改写旧日志。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认为 `sentence`。第二部分使用 `type: "deep"`，须有从 1 开始的正整数 `segment`，以及字符串数组 `uses`（默认 `[]`）；其他类型不得带 `segment`。反馈另行追加，沿用原段号并保留原话，因此反馈行不能算作新讲解段。讲过以及“继续”都不等于确认读者已经理解。讲解与反馈记录示例见 [输出模板](skills/paper-foundations/references/output-template.md)。
 
 本篇位置和后续推荐实际输出后，各记一条 `type: "field"`：`where: null`、`kind: "position"` 或 `"next"`，以及只含已核实条目、至少一项的 `items` 数组；一项都没核实时不写 `field` 记录。每项有 `label`、`title`、`role`、`checked` 和 `link`，推荐项还须有字符串数组 `missing`。位置角色为 `foundational|predecessor|contrast`，推荐角色为 `notes|foundational|recent`；位置的 `label` 是本篇参考文献标识，推荐的可为空字符串或 `null`。`checked` 按实际阅读填写 `abstract` 或 `fulltext`，不是工具成功就自动确认。邀请不能记为已完成推荐；`field` 不得带 `segment`，也不自动改变概念状态。
+
+回顾实际输出、术语表写入成功后，宿主追加 `type: "recap"`、`where: null`，以及字符串数组 `covered`（回顾实际涉及的第一部分补讲概念）和 `terms`（与本次保存的术语表条目一致），数组省略时补 `[]`。只请求回顾时 `terms` 留空，只请求术语表时 `covered` 留空。用 `log show --type recap` 查看；读者回应另记一行并保留原话，邀请或跳过不写回顾记录。`recap` 不得带 `segment`，追加日志本身不改变档案。复用时按日志顺序检查最近实际生成的回顾之后有无 `sentence`，反馈行不重置生成检查点。导读提供主线，但其中略提的词不算补讲过的基础。
+
+只复用实际已输出的部分：单独生成术语表不代表回顾已做，单独回顾也不代表术语表已保存。进入第二部分前，宿主结合记录、文件与实际输出核对，补齐仍需的部分后等待回应。
 
 数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；旧 HTML 缓存会从本地 `source.html` 重新解析，保留元数据、全文脉络和记录，源文件缺失时才提示 `fetch --refresh`。不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
 
@@ -228,6 +237,8 @@ python3 -B -m unittest discover -s tests -v
 实现约定见 [implementation.md](docs/implementation.md)，验收结果和边界见 [validation.md](docs/validation.md)。
 
 [第二部分开发样例](examples/2610.27436v1-deep-trial.md)展示目录和五段讲解；它用于检查输出结构与证据边界，没有真实读者逐段反馈。
+
+[回顾与术语表开发样例](examples/2610.27436v1-recap-trial.md)展示第二部分入口的一屏回顾和 20 条上下文术语，附隔离模拟档案与通过验证的离线重放；仅两项实际补讲进入回顾，不把预列术语当作已经学会。
 
 [跨篇开发样例](examples/2610.27436v1-to-1002.3895-field-trial.md)展示从 SSH 杂质论文进入拓扑绝缘体综述：领域定位、下一篇建议、跨篇基础提示，以及隔离档案中的工具验收。
 

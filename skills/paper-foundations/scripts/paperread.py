@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 
 USER_AGENT = "paper-foundations/0.1 (+https://github.com/relativity143/an-agent-for-paper-reading)"
 PARSER_VERSION = 2
-LOG_TYPES = ("sentence", "overview", "deep", "field")
+LOG_TYPES = ("sentence", "overview", "deep", "field", "recap")
 MAX_DOWNLOAD = 64 * 1024 * 1024
 ARXIV_RE = re.compile(r"(?P<id>\d{4}\.\d{4,5}|[a-z][a-z.\-]*/\d{7})(?P<version>v[1-9]\d*)?", re.I)
 SKIP_CLASSES = {"ltx_bibliography", "ltx_page_navbar", "ltx_page_logo", "ltx_authors", "ltx_dates"}
@@ -955,16 +955,21 @@ class Store:
             write_json(self.home / "profile.json", profile)
             return profile
 
-    def profile_concepts(self, status=None, exclude_paper=None):
+    def profile_concepts(self, status=None, exclude_paper=None, paper=None):
         if status is not None and status not in ("known", "explained", "unsure"):
             raise PaperError("Concept status must be known, explained or unsure.")
-        excluded = paper_identity(exclude_paper) if exclude_paper else None
+        if paper is not None and exclude_paper is not None:
+            raise PaperError("--paper and --exclude-paper cannot be used together.")
+        included = paper_identity(paper) if paper is not None else None
+        excluded = paper_identity(exclude_paper) if exclude_paper is not None else None
         records = []
         for concept, record in self.profile()["concepts"].items():
             if status is not None and record["status"] != status:
                 continue
-            paper = record.get("paper")
-            if excluded and paper and paper_identity(paper) == excluded:
+            origin = record.get("paper")
+            if included and (not origin or paper_identity(origin) != included):
+                continue
+            if excluded and origin and paper_identity(origin) == excluded:
                 continue
             entry = dict(record, concept=concept)
             entry.setdefault("paper", None)
@@ -978,9 +983,9 @@ class Store:
             raise PaperError("A log entry must be a JSON object.")
         record_type = record.get("type", "sentence")
         if record_type not in LOG_TYPES:
-            raise PaperError("Log type must be sentence, overview, deep or field.")
-        if record_type == "overview" and record.get("where") is not None:
-            raise PaperError("An overview log must have where=null.")
+            raise PaperError("Log type must be one of: " + ", ".join(LOG_TYPES) + ".")
+        if record_type in ("overview", "recap") and record.get("where") is not None:
+            raise PaperError("A %s log must have where=null." % record_type)
         if record_type == "deep":
             if type(record.get("segment")) is not int or record["segment"] < 1:
                 raise PaperError("A deep log requires a positive integer segment (starting at 1).")
@@ -988,13 +993,15 @@ class Store:
             raise PaperError("Only deep logs may include segment.")
         if record_type == "field":
             validate_field_record(record)
-        for key in ("gaps", "explained", "unexpanded_terms", "uses"):
+        for key in ("gaps", "explained", "unexpanded_terms", "uses", "covered", "terms"):
             if key in record and (not isinstance(record[key], list) or not all(isinstance(x, str) for x in record[key])):
                 raise PaperError("Log field %s must be an array of strings." % key)
         entry = {"time": now(), "type": "sentence", "where": None, "quote": "", "gaps": [], "explained": [],
                  "unexpanded_terms": [], "next": None, "feedback": None}
         if record_type == "deep":
             entry["uses"] = []
+        if record_type == "recap":
+            entry.update(covered=[], terms=[])
         entry.update(record)
         encoded = json.dumps(entry, ensure_ascii=False, allow_nan=False) + "\n"
         with file_lock(path.parent / ".log.lock"):
@@ -1007,7 +1014,7 @@ class Store:
         if last < 0:
             raise PaperError("--last must be nonnegative; 0 reads all records.")
         if record_type is not None and record_type not in LOG_TYPES:
-            raise PaperError("Log type must be sentence, overview, deep or field.")
+            raise PaperError("Log type must be one of: " + ", ".join(LOG_TYPES) + ".")
         if not path.exists():
             return []
         try:
@@ -1208,7 +1215,7 @@ def command_parser():
     lookup = commands.add_parser("lookup", help="Look up and cache DOI or arXiv metadata")
     lookup.add_argument("input")
     lookup.add_argument("--refresh", action="store_true")
-    for name in ["outline-path", "locate", "context", "find", "text", "ref"]:
+    for name in ["outline-path", "glossary-path", "locate", "context", "find", "text", "ref"]:
         command = commands.add_parser(name)
         command.add_argument("paper")
         if name in {"locate", "find"}:
@@ -1227,7 +1234,9 @@ def command_parser():
     profile.add_parser("show")
     concepts = profile.add_parser("concepts", help="List concept records without the rest of the profile")
     concepts.add_argument("--status", choices=["known", "explained", "unsure"])
-    concepts.add_argument("--exclude-paper", help="Exclude this paper, including other arXiv versions")
+    paper_filter = concepts.add_mutually_exclusive_group()
+    paper_filter.add_argument("--exclude-paper", help="Exclude this paper, including other arXiv versions")
+    paper_filter.add_argument("--paper", help="Only include this paper, including other arXiv versions")
     background = profile.add_parser("set-background")
     background.add_argument("text")
     area = profile.add_parser("set-area")
@@ -1258,15 +1267,17 @@ def run(args, store):
         return store.lookup(args.input, args.refresh)
     if args.command == "profile":
         if args.action == "concepts":
-            return store.profile_concepts(args.status, args.exclude_paper)
+            return store.profile_concepts(args.status, args.exclude_paper, args.paper)
         return store.profile() if args.action == "show" else store.update_profile(args.action, args)
     if args.command == "log":
         if args.action == "show":
             return store.log_show(args.paper, args.last, args.record_type)
         return store.log_add(args.paper, json.loads(sys.stdin.read() if args.json == "-" else args.json))
-    path, data = store.load(args.paper, require_html=args.command != "outline-path")
-    if args.command == "outline-path":
-        return {"path": str(path / "outline.md"), "exists": (path / "outline.md").is_file()}
+    artifact_names = {"outline-path": "outline.md", "glossary-path": "glossary.md"}
+    path, data = store.load(args.paper, require_html=args.command not in artifact_names)
+    if args.command in artifact_names:
+        artifact = path / artifact_names[args.command]
+        return {"path": str(artifact), "exists": artifact.is_file()}
     if args.command == "locate":
         return locate(data, args.query)
     if args.command == "context":
