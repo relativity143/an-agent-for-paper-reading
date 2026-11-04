@@ -116,4 +116,6 @@ sh -n scripts/install.sh
 
 接口依据核对于 2026-11-04：[OpenAlex 当前认证说明](https://help.openalex.org/api/authentication/)支持无 key 的基本查询，[DOI 单条查询说明](https://help.openalex.org/api/get-single-entities/)提供对应入口；[Crossref REST 文档](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)说明作品元数据接口；[arXiv API 手册](https://info.arxiv.org/help/api/user-manual.html)定义 Atom 字段及首版日期。工具沿用共享请求间隔，User-Agent 仅含项目名与仓库地址，不附带读者邮箱或档案信息。
 
+复核修订（2026-11-04）：`field` 记录现在拒绝空 `items`，因为空记录会被当作已经给过本篇位置或推荐；回归测试补了 `position` 与 `next` 两种空数组。跨篇样例中讲义的章级链接改为 `#chapter1`、`#chapter2`，第二篇导读对 §V 的说明改为“此后进展不一，须看新文献”。复核时另在隔离目录重新联网查询 `1311.5233`、`10.1103/PhysRevLett.113.046802`、`10.1007/978-3-319-25607-8`、`10.1103/PhysRevX.9.041015`、`1509.02295` 与 `1908.01172v3`，标识、标题和 DOI 互链均与样例一致；Asbóth 讲义的 DOI 没有摘要，按预期返回 `abstract: null`。
+
 这次运行验证了查询、缓存、状态筛选和记录链路。跨篇例子仍是有明确模拟前提的开发样例，没有真人连续阅读反馈；不能据此声称学习效果已验证，也不能把取得摘要等同于核实文献的具体结论。私有查询缓存和模拟档案未加入仓库，联网验收进程已结束，未启动常驻服务。

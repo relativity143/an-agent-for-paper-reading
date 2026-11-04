@@ -110,7 +110,8 @@ class FieldReadingTests(unittest.TestCase):
         path = self.path / "log.jsonl"
         original = path.read_bytes()
         bad = [dict(good, kind="other"), dict(good, where="S1"), dict(good, segment=None),
-               dict(good, items=None), dict(good, items={}), dict(good, items=["not an item"])]
+               dict(good, items=None), dict(good, items={}), dict(good, items=["not an item"]),
+               dict(good, items=[]), dict(good, kind="next", items=[])]
         for record in bad:
             with self.subTest(record=record), self.assertRaises(paperread.PaperError):
                 self.store.log_add(PAPER, record)

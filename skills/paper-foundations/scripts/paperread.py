@@ -70,6 +70,9 @@ def validate_field_record(record):
     items = record.get("items")
     if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
         raise PaperError("Field items must be an array of objects.")
+    if not items:
+        # A field record marks a delivered position or reading list; with nothing verified, log nothing.
+        raise PaperError("A field log needs at least one verified item; if none could be verified, do not log it.")
     roles = ("foundational", "predecessor", "contrast") if kind == "position" else ("notes", "foundational", "recent")
     for item in items:
         label = item.get("label")

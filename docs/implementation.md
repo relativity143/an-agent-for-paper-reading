@@ -220,7 +220,7 @@ LaTeXML 不标注句子，需要自己切分：
 
 `segment` 必须是 JSON 正整数，布尔值、浮点数和数字字符串都不接受；非 `deep` 类型即使传 `segment: null` 也会报错。`uses` 可以为空，省略时补 `[]`；若提供，须为字符串数组。反馈沿用正在回应的段号，不另算讲完了一段；单纯反馈的 `explained` 留空。日志追加本身不改读者档案。
 
-第四轮新增 `field` 类型，记录“本篇在领域中的位置”和“下一篇读什么”（第 8.4 节）。`where` 为 `null`；`kind` 为 `position` 或 `next`；`items` 是对象数组，每项包含 `label`（如 `"[26]"`，后续阅读推荐可为空）、`title`、`role`（`position` 时为 `foundational`、`predecessor` 或 `contrast`；`next` 时为 `notes`、`foundational` 或 `recent`）、`checked`（`abstract` 或 `fulltext`，表示实际核对到哪一层）、`link`，`next` 的每项另加 `missing`（按读者档案暂定还缺的基础，字符串数组）。没有核对过的条目不写入。
+第四轮新增 `field` 类型，记录“本篇在领域中的位置”和“下一篇读什么”（第 8.4 节）。`where` 为 `null`；`kind` 为 `position` 或 `next`；`items` 是对象数组，每项包含 `label`（如 `"[26]"`，后续阅读推荐可为空）、`title`、`role`（`position` 时为 `foundational`、`predecessor` 或 `contrast`；`next` 时为 `notes`、`foundational` 或 `recent`）、`checked`（`abstract` 或 `fulltext`，表示实际核对到哪一层）、`link`，`next` 的每项另加 `missing`（按读者档案暂定还缺的基础，字符串数组）。没有核对过的条目不写入；`items` 至少一项，一项都没核实时不写 `field` 记录。
 
 `position.label` 必须为非空文字；`next.label` 可为空字符串或 `null`。每项须有非空 `title` 和有效的 HTTP(S) 来源链接。`checked` 由宿主根据实际阅读填写，查询成功、查到标题或取得摘要本身都不等于已经完成内容核对。`field` 日志不会更新读者档案；推荐的 `missing` 是暂定判断，不直接变成 `unsure`。
 
@@ -501,6 +501,6 @@ areas:
    - 输出 JSON，并注明来源服务；摘要只能说明那项工作大致做了什么，不能当作已核对其具体结论。
    - `source` 标明主要元数据服务，`abstract_source` 标明摘要服务；`sources` 列出身份核对成功的服务，`source_urls` 保留实际尝试的接口，错误或缺失情况保留在 `warnings`。arXiv 年份取首版发表年，可能与期刊年份不同。
    - 缓存键基于规范化 DOI 或 arXiv 查询，含版本的查询分别保存；重复查询不联网，刷新失败保留旧缓存。只有标题等元数据但没有摘要时，返回 `abstract: null`；所有服务均失败或标识不匹配时返回错误，不缓存空成功结果。
-7. **`log add` 接受 `type: "field"`。** 按第 6.2 节校验 `kind` 和 `items`：`where` 必须为 `null`；`items` 为对象数组，`role` 和 `checked` 取规定的值；`next` 的每项须有字符串数组 `missing`。
+7. **`log add` 接受 `type: "field"`。** 按第 6.2 节校验 `kind` 和 `items`：`where` 必须为 `null`；`items` 为非空对象数组，`role` 和 `checked` 取规定的值；`next` 的每项须有字符串数组 `missing`。
 8. **测试。** 覆盖 `profile concepts` 的筛选、`ref` 解析出 DOI 和 arXiv 编号、`lookup` 的解析与缓存（用离线样例，不联网）、`field` 记录的校验。
 9. **试跑（跨篇）。** 先用 `2610.27436v1` 走完导读、一句讲解、第二部分和第 8 步；再打开同一领域的 `1002.3895`（拓扑绝缘体综述），检查导读是否正确标出前一篇已经补过的基础，以及讲过和确认懂了是否分开。存入 `examples/`。

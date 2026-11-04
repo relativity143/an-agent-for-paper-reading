@@ -210,7 +210,7 @@ python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --ty
 
 `log show --type overview --last 1` 先筛选类型再取最后一条，避免导读被较新的逐句讲解挤出近期记录而漏判。不传 `--type` 时包含所有类型；`--last 0` 返回全部匹配记录。旧记录缺少 `type` 时按 `sentence` 处理，不改写旧日志。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认为 `sentence`。第二部分使用 `type: "deep"`，须有从 1 开始的正整数 `segment`，以及字符串数组 `uses`（默认 `[]`）；其他类型不得带 `segment`。反馈另行追加，沿用原段号并保留原话，因此反馈行不能算作新讲解段。讲过以及“继续”都不等于确认读者已经理解。讲解与反馈记录示例见 [输出模板](skills/paper-foundations/references/output-template.md)。
 
-本篇位置和后续推荐实际输出后，各记一条 `type: "field"`：`where: null`、`kind: "position"` 或 `"next"`，以及只含已核实条目的 `items` 数组。每项有 `label`、`title`、`role`、`checked` 和 `link`，推荐项还须有字符串数组 `missing`。位置角色为 `foundational|predecessor|contrast`，推荐角色为 `notes|foundational|recent`；位置的 `label` 是本篇参考文献标识，推荐的可为空字符串或 `null`。`checked` 按实际阅读填写 `abstract` 或 `fulltext`，不是工具成功就自动确认。邀请不能记为已完成推荐；`field` 不得带 `segment`，也不自动改变概念状态。
+本篇位置和后续推荐实际输出后，各记一条 `type: "field"`：`where: null`、`kind: "position"` 或 `"next"`，以及只含已核实条目、至少一项的 `items` 数组；一项都没核实时不写 `field` 记录。每项有 `label`、`title`、`role`、`checked` 和 `link`，推荐项还须有字符串数组 `missing`。位置角色为 `foundational|predecessor|contrast`，推荐角色为 `notes|foundational|recent`；位置的 `label` 是本篇参考文献标识，推荐的可为空字符串或 `null`。`checked` 按实际阅读填写 `abstract` 或 `fulltext`，不是工具成功就自动确认。邀请不能记为已完成推荐；`field` 不得带 `segment`，也不自动改变概念状态。
 
 数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；旧 HTML 缓存会从本地 `source.html` 重新解析，保留元数据、全文脉络和记录，源文件缺失时才提示 `fetch --refresh`。不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
 
