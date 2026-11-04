@@ -101,3 +101,19 @@ sh -n scripts/install.sh
 - 两处本机 Skill 安装均已更新，各 5 个文件与仓库逐字节一致，`log show --help` 均包含 `--type` 和 `deep`。示例的五段、五组基础列表、五个停等说明及数学分隔符检查通过；27 个原文锚点在缓存 HTML 中存在。
 
 本轮没有真实读者的逐段反馈，没有据此生成 `known` 状态，也没有重新完成两种宿主中的实际交互试用。静态示例能够检查结构与来源边界，不能证明模型总会遵守停等规则，也不能代表真实学习效果；图像内容和论文数值结果未重新验证。
+
+## 第四轮：从单篇进入领域（2026-11-04）
+
+本轮实现 `implementation.md` 第 16 节：跨篇概念对照、论文位置、后续阅读，以及支撑来源核查的元数据工具。
+
+- 全套离线测试 122 项通过，新增 39 项（24 项 lookup、15 项跨篇与 field）。覆盖概念状态/论文联合筛选、同一 arXiv 不同版本排除、无来源记录、DOI 与旧式 arXiv 识别、合法 SICI DOI 后缀、OpenAlex 倒排摘要、Crossref JATS 清理、来源身份校验、缓存/并发/刷新、失败退回及 field 结构校验。
+- `ref` 保留旧字段，增加 `doi`、`arxiv_id`，未找到时为 `null`；相应旧输出断言已更新。解析不会改写已缓存的参考文献条目。独立审阅发现的 SICI DOI 尖括号截断问题已修复并有回归测试。
+- 全部 8 个模板 JSON 通过实际 `log_add` 校验，其中两条 `field`；模板检查没有创建读者档案。Python 3.9 语法检查通过，实际测试环境为 Python 3.14.4。
+- 隔离目录 `.local/round4-smoke` 的真实查询：四个 arXiv 条目 `1509.02295`、`1311.5233v2`、`1908.01172`、`1002.3895v2` 均取得元数据与摘要；DOI `10.1103/PhysRevLett.113.046802` 从 OpenAlex 取得同一论文及摘要。五项重放均在禁止联网的客户端下命中缓存。Crossref 退回、两服务无摘要、错误和身份不符分支使用离线样例验证，未声称它们在本次真实查询中被触发。
+- [跨篇开发样例](../examples/2610.27436v1-to-1002.3895-field-trial.md)串联第一篇已有导读、卡点讲解和第二部分，再给三项领域定位、三项推荐及第二篇导读。来源核对层级逐项标明；第二篇正文、公式和图注已按节阅读，未查看图像或重算结果。第一篇已纠正的手征/子晶格对称性区别保留。
+- 真实 CLI 在隔离模拟档案中验证：两项 `explained`、一项 `unsure`、零项 `known`；跨篇筛选正确保留出处。两条 field 日志追加并读回后，档案字节不变；推荐的暂定 `missing` 不会写成读者真实的 `unsure`。实际读者的默认档案和日志未改动。
+- Codex 和 Claude Code 两处本机安装已更新，各 5 个文件与仓库逐字节一致；`lookup`、`profile concepts` 及 `log show --type field` 的命令入口已检查。
+
+接口依据核对于 2026-11-04：[OpenAlex 当前认证说明](https://help.openalex.org/api/authentication/)支持无 key 的基本查询，[DOI 单条查询说明](https://help.openalex.org/api/get-single-entities/)提供对应入口；[Crossref REST 文档](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)说明作品元数据接口；[arXiv API 手册](https://info.arxiv.org/help/api/user-manual.html)定义 Atom 字段及首版日期。工具沿用共享请求间隔，User-Agent 仅含项目名与仓库地址，不附带读者邮箱或档案信息。
+
+这次运行验证了查询、缓存、状态筛选和记录链路。跨篇例子仍是有明确模拟前提的开发样例，没有真人连续阅读反馈；不能据此声称学习效果已验证，也不能把取得摘要等同于核实文献的具体结论。私有查询缓存和模拟档案未加入仓库，联网验收进程已结束，未启动常驻服务。

@@ -21,14 +21,14 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
-from urllib.parse import unquote, urlencode, urljoin, urlparse
+from urllib.parse import quote, unquote, urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
 
 USER_AGENT = "paper-foundations/0.1 (+https://github.com/relativity143/an-agent-for-paper-reading)"
 PARSER_VERSION = 2
-LOG_TYPES = ("sentence", "overview", "deep")
+LOG_TYPES = ("sentence", "overview", "deep", "field")
 MAX_DOWNLOAD = 64 * 1024 * 1024
 ARXIV_RE = re.compile(r"(?P<id>\d{4}\.\d{4,5}|[a-z][a-z.\-]*/\d{7})(?P<version>v[1-9]\d*)?", re.I)
 SKIP_CLASSES = {"ltx_bibliography", "ltx_page_navbar", "ltx_page_logo", "ltx_authors", "ltx_dates"}
@@ -44,6 +44,58 @@ class DownloadError(PaperError):
     def __init__(self, message, fallback_allowed=False):
         super().__init__(message)
         self.fallback_allowed = fallback_allowed
+
+
+def paper_identity(value):
+    """Compare papers across arXiv URL/version/cache-name forms without fetching."""
+    candidate = value.strip()
+    old_cache = re.fullmatch(r"([a-z][a-z.\-]*)_(\d{7})(v[1-9]\d*)?", candidate, re.I)
+    if old_cache:
+        candidate = old_cache[1] + "/" + old_cache[2] + (old_cache[3] or "")
+    try:
+        identifier, _ = parse_arxiv(candidate)
+        return "arxiv:" + identifier
+    except PaperError:
+        if not re.fullmatch(r"[\w.\-]+", candidate) or candidate in {".", ".."}:
+            raise PaperError("Expected an arXiv ID/URL or a cached paper name.")
+        return "local:" + candidate
+
+
+def validate_field_record(record):
+    if record.get("where") is not None:
+        raise PaperError("A field log must have where=null.")
+    kind = record.get("kind")
+    if kind not in ("position", "next"):
+        raise PaperError("Field kind must be position or next.")
+    items = record.get("items")
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise PaperError("Field items must be an array of objects.")
+    roles = ("foundational", "predecessor", "contrast") if kind == "position" else ("notes", "foundational", "recent")
+    for item in items:
+        label = item.get("label")
+        if "label" not in item or (label is not None and not isinstance(label, str)):
+            raise PaperError("Field items require a text label (next may use null).")
+        if kind == "position" and (not isinstance(label, str) or not label.strip()):
+            raise PaperError("A position item requires its reference label.")
+        if not isinstance(item.get("title"), str) or not item["title"].strip():
+            raise PaperError("Field item title must be nonempty text.")
+        if item.get("role") not in roles:
+            raise PaperError("Invalid role for field kind " + kind + ".")
+        if item.get("checked") not in ("abstract", "fulltext"):
+            raise PaperError("Field checked must be abstract or fulltext.")
+        link = item.get("link")
+        try:
+            parsed = urlparse(link.strip()) if isinstance(link, str) else None
+            valid_link = (parsed is not None and parsed.scheme in ("http", "https")
+                          and parsed.hostname and not any(c.isspace() for c in link.strip()))
+        except ValueError:
+            valid_link = False
+        if not valid_link:
+            raise PaperError("Field item link must be an HTTP(S) source URL.")
+        if kind == "next" or "missing" in item:
+            missing = item.get("missing")
+            if not isinstance(missing, list) or not all(isinstance(x, str) for x in missing):
+                raise PaperError("Field item missing must be an array of strings.")
 
 
 def now():
@@ -415,6 +467,234 @@ def api_metadata(client, identifier, version=""):
         raise PaperError("arXiv metadata was not valid Atom XML.") from error
 
 
+def parse_doi(value):
+    """Normalize an identifier, preserving punctuation that belongs to its suffix."""
+    if not isinstance(value, str):
+        raise PaperError("Expected a DOI or doi.org URL.")
+    value = value.strip()
+    # Strip surrounding citation delimiters only, never trailing DOI punctuation.
+    for opening, closing in (("(", ")"), ("[", "]"), ("<", ">"), ('"', '"'), ("'", "'")):
+        if value.startswith(opening) and value.endswith(closing):
+            value = value[1:-1].strip()
+            break
+    if value.lower().startswith("doi:"):
+        value = value[4:].strip()
+    if "://" in value:
+        try:
+            parsed = urlparse(value)
+            if (parsed.scheme not in {"http", "https"}
+                    or parsed.hostname not in {"doi.org", "dx.doi.org", "www.doi.org"}
+                    or parsed.username or parsed.password):
+                raise PaperError("Only doi.org or dx.doi.org DOI URLs are supported.")
+            value = parsed.path.lstrip("/")
+        except ValueError as error:
+            raise PaperError("Invalid DOI URL.") from error
+    try:
+        value = unquote(value, errors="strict")
+    except UnicodeDecodeError as error:
+        raise PaperError("Invalid DOI URL encoding.") from error
+    if not re.fullmatch(r"10\.\d{4,9}/[^\s\x00-\x1f\x7f]+", value, re.I):
+        raise PaperError("Expected a DOI beginning with 10.<registrant>/<suffix>.")
+    return value.lower()
+
+
+def lookup_json(data, service):
+    try:
+        result = json.loads(data)
+    except (ValueError, UnicodeDecodeError) as error:
+        raise PaperError(service + " returned invalid JSON.") from error
+    if not isinstance(result, dict):
+        raise PaperError(service + " returned no metadata object.")
+    return result
+
+
+def lookup_list(record, field, service):
+    value = record.get(field)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise PaperError(service + " returned an invalid " + field + " list.")
+    return value
+
+
+def lookup_year(value):
+    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 9999:
+        return value
+    return None
+
+
+def lookup_links(values):
+    result = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = urlparse(value)
+            valid = parsed.scheme in {"https", "http"} and parsed.hostname and not parsed.username
+        except ValueError:
+            valid = False
+        if valid and value not in result:
+            result.append(value)
+    return result
+
+
+def lookup_arxiv_link(links):
+    for link in links:
+        try:
+            identifier, version = parse_arxiv(link)
+            return identifier + version
+        except PaperError:
+            pass
+    return None
+
+
+def inverted_abstract(index):
+    if index is None or index == {}:
+        return None
+    if not isinstance(index, dict):
+        raise PaperError("OpenAlex abstract_inverted_index is not an object.")
+    words = {}
+    for word, positions in index.items():
+        if not isinstance(word, str) or not word or not isinstance(positions, list) or not positions:
+            raise PaperError("OpenAlex abstract_inverted_index has invalid tokens.")
+        for position in positions:
+            if type(position) is not int or position < 0 or position in words:
+                raise PaperError("OpenAlex abstract_inverted_index has invalid or duplicate positions.")
+            words[position] = word
+    if not words or max(words) + 1 != len(words):
+        raise PaperError("OpenAlex abstract_inverted_index has missing positions.")
+    return normalize(" ".join(words[position] for position in sorted(words))) or None
+
+
+class MetadataTextParser(HTMLParser):
+    """Read JATS fragments, including undeclared namespace prefixes and entities."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.split(":")[-1] in {"p", "title", "sec", "abstract", "br", "div", "li"}:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag):
+        self.handle_starttag(tag, ())
+
+    def handle_data(self, data):
+        self.parts.append(data)
+
+
+def metadata_text(value):
+    if not isinstance(value, str):
+        return None
+    parser = MetadataTextParser()
+    parser.feed(value)
+    parser.close()
+    return normalize("".join(parser.parts)) or None
+
+
+def lookup_openalex(data, doi):
+    record = lookup_json(data, "OpenAlex")
+    ids = record.get("ids") if isinstance(record.get("ids"), dict) else {}
+    identifiers = [value for value in (record.get("doi"), ids.get("doi")) if value]
+    if not identifiers or any(parse_doi(value) != doi for value in identifiers):
+        raise PaperError("OpenAlex metadata does not identify the requested DOI.")
+    title = record.get("title") or record.get("display_name")
+    if not isinstance(title, str) or not normalize(title):
+        raise PaperError("OpenAlex returned no title for the requested DOI.")
+    authors = []
+    for authorship in lookup_list(record, "authorships", "OpenAlex"):
+        author = authorship.get("author") if isinstance(authorship, dict) else None
+        name = author.get("display_name") if isinstance(author, dict) else None
+        if isinstance(name, str) and normalize(name):
+            authors.append(normalize(name))
+    location = record.get("primary_location")
+    location = location if isinstance(location, dict) else {}
+    links = lookup_links(["https://doi.org/" + quote(doi, safe="/"), record.get("id"),
+                          location.get("landing_page_url"), location.get("pdf_url")])
+    warnings = []
+    try:
+        abstract = inverted_abstract(record.get("abstract_inverted_index"))
+    except PaperError as error:
+        abstract = None
+        warnings.append(str(error))
+    return {"title": normalize(title), "authors": authors, "year": lookup_year(record.get("publication_year")),
+            "abstract": abstract, "doi": doi, "arxiv_id": lookup_arxiv_link(links), "links": links,
+            "source": "openalex", "abstract_source": "openalex" if abstract else None, "warnings": warnings}
+
+
+def lookup_crossref(data, doi):
+    payload = lookup_json(data, "Crossref")
+    record = payload.get("message")
+    if payload.get("status") != "ok" or not isinstance(record, dict):
+        raise PaperError("Crossref returned no successful metadata record.")
+    if parse_doi(record.get("DOI")) != doi:
+        raise PaperError("Crossref metadata does not identify the requested DOI.")
+    titles = record.get("title")
+    title = metadata_text(titles[0]) if isinstance(titles, list) and titles else None
+    if not title:
+        raise PaperError("Crossref returned no title for the requested DOI.")
+    authors = []
+    for author in lookup_list(record, "author", "Crossref"):
+        if not isinstance(author, dict):
+            continue
+        name = author.get("name") or " ".join(part for part in (author.get("given"), author.get("family"))
+                                               if isinstance(part, str))
+        if isinstance(name, str) and normalize(name):
+            authors.append(normalize(name))
+    year = None
+    for field in ("published", "published-print", "published-online", "issued"):
+        date = record.get(field)
+        parts = date.get("date-parts") if isinstance(date, dict) else None
+        if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
+            year = lookup_year(parts[0][0])
+            if year is not None:
+                break
+    links = lookup_links(["https://doi.org/" + quote(doi, safe="/"), record.get("URL")] +
+                         [item.get("URL") for item in lookup_list(record, "link", "Crossref") if isinstance(item, dict)])
+    abstract = metadata_text(record.get("abstract"))
+    return {"title": title, "authors": authors, "year": year, "abstract": abstract, "doi": doi,
+            "arxiv_id": lookup_arxiv_link(links), "links": links, "source": "crossref",
+            "abstract_source": "crossref" if abstract else None, "warnings": []}
+
+
+def lookup_arxiv(data, identifier, version):
+    ns = {"a": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as error:
+        raise PaperError("arXiv metadata was not valid Atom XML.") from error
+    entries = root.findall("a:entry", ns)
+    if len(entries) != 1:
+        raise PaperError("arXiv returned no unique entry for the requested paper.")
+    entry = entries[0]
+    found_id, found_version = parse_arxiv(entry.findtext("a:id", default="", namespaces=ns))
+    if found_id != identifier or not found_version or (version and found_version != version):
+        raise PaperError("arXiv metadata does not identify the requested paper version.")
+    title = normalize(entry.findtext("a:title", default="", namespaces=ns))
+    if not title:
+        raise PaperError("arXiv returned no title for the requested paper.")
+    summary = entry.find("a:summary", ns)
+    abstract = (normalize("".join(summary.itertext())) or None) if summary is not None else None
+    published = entry.findtext("a:published", default="", namespaces=ns)
+    year = lookup_year(int(published[:4])) if re.match(r"^\d{4}-", published) else None
+    warnings, doi = [], None
+    doi_value = entry.findtext("arxiv:doi", default="", namespaces=ns)
+    if doi_value:
+        try:
+            doi = parse_doi(doi_value)
+        except PaperError:
+            warnings.append("arXiv returned an invalid DOI; it was omitted.")
+    links = lookup_links(["https://arxiv.org/abs/" + found_id + found_version] +
+                         [link.get("href") for link in entry.findall("a:link", ns)] +
+                         (["https://doi.org/" + quote(doi, safe="/")] if doi else []))
+    return {"title": title, "authors": [normalize(author.findtext("a:name", default="", namespaces=ns))
+                                        for author in entry.findall("a:author", ns)
+                                        if normalize(author.findtext("a:name", default="", namespaces=ns))],
+            "year": year, "abstract": abstract, "doi": doi, "arxiv_id": found_id + found_version,
+            "links": links, "source": "arxiv", "abstract_source": "arxiv" if abstract else None,
+            "warnings": warnings}
+
+
 class Store:
     def __init__(self, home=None, client=None):
         self.home = Path(home or os.environ.get("PAPERREAD_HOME", "~/.paperread")).expanduser().resolve()
@@ -574,6 +854,64 @@ class Store:
                        "source_sha256": digest.hexdigest(), "sections": [], "paragraphs": [], "equations": [], "figures": [], "references": []})
         return self.summary(target, False)
 
+    def lookup(self, value, refresh=False):
+        if not isinstance(value, str):
+            raise PaperError("Expected a DOI or arXiv identifier.")
+        try:
+            identifier, version = parse_arxiv(value)
+            canonical, kind = "arxiv:" + identifier + version, "arxiv"
+        except PaperError:
+            identifier, version = parse_doi(value), ""
+            canonical, kind = "doi:" + identifier, "doi"
+        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        path = self.home / "lookup" / (digest + ".json")
+        with file_lock(path.with_suffix(".lock"), timeout=90):
+            if path.exists() and not refresh:
+                cached = read_json(path)
+                if (not isinstance(cached, dict) or cached.get("input") != canonical
+                        or not isinstance(cached.get("result"), dict)):
+                    raise PaperError("Invalid lookup cache; use lookup --refresh to rebuild it.")
+                return dict(cached["result"], cached=True)
+            sources, source_urls, warnings = [], [], []
+            if kind == "arxiv":
+                url = "https://export.arxiv.org/api/query?" + urlencode({"id_list": identifier + version})
+                data, _ = self.client.get(url)
+                result = lookup_arxiv(data, identifier, version)
+                sources.append("arxiv")
+                source_urls.append(url)
+            else:
+                result = None
+                services = (("openalex", "https://api.openalex.org/works/https://doi.org/" +
+                             quote(identifier, safe="/"), lookup_openalex),
+                            ("crossref", "https://api.crossref.org/works/" + quote(identifier, safe=""), lookup_crossref))
+                for service, url, parser in services:
+                    source_urls.append(url)
+                    try:
+                        data, _ = self.client.get(url)
+                        metadata = parser(data, identifier)
+                    except PaperError as error:
+                        warnings.append(service + ": " + str(error))
+                        continue
+                    sources.append(service)
+                    if result is None:
+                        result = metadata
+                    else:
+                        for field in ("abstract", "abstract_source", "authors", "year", "arxiv_id"):
+                            if not result.get(field) and metadata.get(field):
+                                result[field] = metadata[field]
+                        result["links"] = lookup_links(result["links"] + metadata["links"])
+                        result["warnings"].extend(metadata["warnings"])
+                    if result["abstract"]:
+                        break
+                if result is None:
+                    raise PaperError("Lookup failed; no verified metadata was cached. " + " ".join(warnings))
+            result["warnings"].extend(warnings)
+            if result["abstract"] is None:
+                result["warnings"].append("No abstract was available; open a source link before assessing the work.")
+            result.update(sources=sources, source_urls=source_urls, fetched_at=now(), cached=False)
+            write_json(path, {"input": canonical, "result": result})
+            return result
+
     def profile(self):
         path = self.home / "profile.json"
         data = read_json(path) if path.exists() else {"background": "", "areas": {}, "concepts": {}}
@@ -614,13 +952,30 @@ class Store:
             write_json(self.home / "profile.json", profile)
             return profile
 
+    def profile_concepts(self, status=None, exclude_paper=None):
+        if status is not None and status not in ("known", "explained", "unsure"):
+            raise PaperError("Concept status must be known, explained or unsure.")
+        excluded = paper_identity(exclude_paper) if exclude_paper else None
+        records = []
+        for concept, record in self.profile()["concepts"].items():
+            if status is not None and record["status"] != status:
+                continue
+            paper = record.get("paper")
+            if excluded and paper and paper_identity(paper) == excluded:
+                continue
+            entry = dict(record, concept=concept)
+            entry.setdefault("paper", None)
+            entry.setdefault("where", None)
+            records.append(entry)
+        return records
+
     def log_add(self, paper, record):
         path = self.resolve(paper) / "log.jsonl"
         if not isinstance(record, dict):
             raise PaperError("A log entry must be a JSON object.")
         record_type = record.get("type", "sentence")
         if record_type not in LOG_TYPES:
-            raise PaperError("Log type must be sentence, overview or deep.")
+            raise PaperError("Log type must be sentence, overview, deep or field.")
         if record_type == "overview" and record.get("where") is not None:
             raise PaperError("An overview log must have where=null.")
         if record_type == "deep":
@@ -628,6 +983,8 @@ class Store:
                 raise PaperError("A deep log requires a positive integer segment (starting at 1).")
         elif "segment" in record:
             raise PaperError("Only deep logs may include segment.")
+        if record_type == "field":
+            validate_field_record(record)
         for key in ("gaps", "explained", "unexpanded_terms", "uses"):
             if key in record and (not isinstance(record[key], list) or not all(isinstance(x, str) for x in record[key])):
                 raise PaperError("Log field %s must be an array of strings." % key)
@@ -647,7 +1004,7 @@ class Store:
         if last < 0:
             raise PaperError("--last must be nonnegative; 0 reads all records.")
         if record_type is not None and record_type not in LOG_TYPES:
-            raise PaperError("Log type must be sentence, overview or deep.")
+            raise PaperError("Log type must be sentence, overview, deep or field.")
         if not path.exists():
             return []
         try:
@@ -789,6 +1146,41 @@ def paper_text(data, section=None):
     return "\n\n".join(lines)
 
 
+def reference_identifiers(item):
+    doi, arxiv_id = None, None
+
+    def inspect(value):
+        nonlocal doi, arxiv_id
+        if doi is None:
+            try:
+                doi = parse_doi(value)
+            except PaperError:
+                pass
+        if arxiv_id is None:
+            try:
+                identifier, version = parse_arxiv(value)
+                arxiv_id = identifier + version
+            except PaperError:
+                pass
+
+    # Exact href values take precedence over punctuation-sensitive prose extraction.
+    for link in item.get("links", []):
+        inspect(link)
+    text = item.get("text", "")
+    for match in re.finditer(r"(?:https?://(?:www\.)?arxiv\.org/(?:abs|html|pdf)/|10\.\d{4,9}/)[^\s\"']+", text, re.I):
+        value = match[0].rstrip(".,;:")
+        for closing, opening in ((")", "("), ("]", "["), ("}", "{"), (">", "<")):
+            while value.endswith(closing) and value.count(closing) > value.count(opening):
+                value = value[:-1]
+        inspect(value)
+    match = re.search(r"\barxiv\s*:?\s*(\d{4}\.\d{4,5}(?:v[1-9]\d*)?|[a-z][a-z.\-]*/\d{7}(?:v[1-9]\d*)?)\b", text, re.I)
+    if match:
+        inspect(match[1])
+    if arxiv_id is None and doi and doi.startswith("10.48550/arxiv."):
+        inspect(doi[len("10.48550/arxiv."):])
+    return {"doi": doi, "arxiv_id": arxiv_id}
+
+
 def reference(data, identifier):
     refs = data.get("references", [])
     exact = [r for r in refs if r["id"] == identifier]
@@ -796,7 +1188,7 @@ def reference(data, identifier):
     matches = exact or [r for r in refs if r["label"].strip().strip("[]()") == label]
     if len(matches) != 1:
         raise PaperError(("Ambiguous reference: " if matches else "Unknown reference: ") + identifier)
-    return matches[0]
+    return dict(matches[0], **reference_identifiers(matches[0]))
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -810,6 +1202,9 @@ def command_parser():
     fetch = commands.add_parser("fetch", help="Cache an arXiv paper or a local PDF")
     fetch.add_argument("input")
     fetch.add_argument("--refresh", action="store_true")
+    lookup = commands.add_parser("lookup", help="Look up and cache DOI or arXiv metadata")
+    lookup.add_argument("input")
+    lookup.add_argument("--refresh", action="store_true")
     for name in ["outline-path", "locate", "context", "find", "text", "ref"]:
         command = commands.add_parser(name)
         command.add_argument("paper")
@@ -827,6 +1222,9 @@ def command_parser():
             command.add_argument("--after", type=int, default=1)
     profile = commands.add_parser("profile").add_subparsers(dest="action", required=True)
     profile.add_parser("show")
+    concepts = profile.add_parser("concepts", help="List concept records without the rest of the profile")
+    concepts.add_argument("--status", choices=["known", "explained", "unsure"])
+    concepts.add_argument("--exclude-paper", help="Exclude this paper, including other arXiv versions")
     background = profile.add_parser("set-background")
     background.add_argument("text")
     area = profile.add_parser("set-area")
@@ -853,7 +1251,11 @@ def command_parser():
 def run(args, store):
     if args.command == "fetch":
         return store.fetch(args.input, args.refresh)
+    if args.command == "lookup":
+        return store.lookup(args.input, args.refresh)
     if args.command == "profile":
+        if args.action == "concepts":
+            return store.profile_concepts(args.status, args.exclude_paper)
         return store.profile() if args.action == "show" else store.update_profile(args.action, args)
     if args.command == "log":
         if args.action == "show":

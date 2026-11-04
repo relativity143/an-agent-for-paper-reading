@@ -26,9 +26,9 @@ Physics provides the initial tasks and correctness checks. The design is intende
 6. **Adjust to feedback.** If the reader is still stuck, find where and unfold further; once the passage makes sense, continue reading.
 7. **A full explanation after reading (Part 2).** Once the reader says they have finished the paper, the agent offers this walkthrough once and waits for agreement. An explicit request for a full explanation goes directly to the outline. This pass no longer simplifies for readability: it states the full model or experimental setup, notation and conventions, approximations and their conditions; follows the key derivation or measurement procedure in logical order; and shows which calculations, measurements, or figures support each main conclusion, how strongly, and with what limits. Part 1 foundations marked `explained` or `known` can be used directly with a pointer to where they were covered; `unsure` is not treated as understood. The agent first gives an outline, then explains one segment at a time and waits for a response, listing the foundations each segment uses. “Continue” only advances the explanation. Explicit confirmation that a segment makes sense can update its `uses` concepts within the scope of that confirmation, with the reader's words saved as evidence. A named difficulty marks the relevant concept `unsure`; the agent explains it in the Part 1 way and returns to the current segment. This ties the piecemeal foundations into a whole and lets readers judge what they have learned; the agent gives no tests or scores and does not claim understanding on their behalf.
 8. **From this paper into the field.** Understanding a paper includes knowing where it sits in its field. This step stays restrained and does three things:
-   - **Where this paper sits.** At the end of the overview or of Part 2, a few lines list the 3 to 5 works the paper directly builds on or contrasts with, grouped as foundational works, direct predecessors, and contrasting works; one sentence each says what that work established and how this paper uses it or differs from it. The works come from the paper's own introduction and references and are opened and checked one by one; anything not checked is left out.
-   - **Accumulation across papers.** The reader profile is shared across papers. When the reader moves to the next paper in the same field, foundations they have confirmed are reused directly, and the overview says what is still missing. The more papers they read, the less there is to fill in.
-   - **What to read next (optional).** After Part 2, suggest 2 to 3 follow-up readings, each with why it is worth reading and which foundations the reader still lacks for it according to their profile; typically lecture notes or a review to fill in foundations, a foundational paper, and a related recent work.
+   - **Where this paper sits.** Immediately after Part 2's final segment, or whenever explicitly requested, list the 3 to 5 works the paper directly builds on or contrasts with, grouped as foundational works, direct predecessors, and contrasting works. These come from the paper's own introduction, text, and references. Check each source, label whether its abstract or full text was read, and separate the current authors' description from independently checked facts. Specific conclusions require reading the relevant full text. If fewer works can be verified, list fewer and explain the gap; the overview does not expand this step by default.
+   - **Accumulation across papers.** Before an overview, check concepts from other papers: `known` means explicitly confirmed, `explained` means covered but not confirmed, and `unsure` remains a gap. Cite the recorded paper rather than inventing a reading history for concepts without a paper source. Reuse a concept only after checking its meaning and conditions, not just a similar name.
+   - **What to read next (optional).** After Part 2 and the paper's position, offer recommendations once and wait for agreement; an explicit request goes directly to recommendations without requiring earlier stages. Give at most 3 verified readings, each with a reason, source link, verification level, and tentatively missing foundations based on the profile. Lecture notes or a review, a foundational paper, and related recent work are useful categories, not a quota.
 
    No complete body of field knowledge, long literature history, or fully automatic citation network; existing literature search tools can be used when needed.
 
@@ -53,7 +53,7 @@ This explanation itself uses terms such as “band,” “gap,” and “symmetr
 | Contextual glossary | A supporting reference for basic terms, abbreviations, symbols, aliases or translations, and how they are used in the paper. |
 | Guided return to the full text | Connections from the new background back to the original sentence's words, equations, and figures; the passage's role in the paper and its links to the surrounding text; later places that reuse these concepts; and source links. |
 | Full explanation (Part 2) | After the paper is read, a segmented re-explanation of the core theory or experiment at close to the paper's rigor: setup and assumptions, derivation or measurement procedure, chain of evidence, and conditions of validity; each segment lists the foundations it uses, for the reader's self-check. |
-| Where this paper sits and what to read next | The few works this paper directly builds on or contrasts with, and how, each checked against its source; reuse of confirmed foundations when reading the next paper in the field; an optional 2 to 3 follow-up readings with the foundations each still requires. |
+| Where this paper sits and what to read next | The few works this paper directly builds on or contrasts with, and how, each checked against its source; reuse of confirmed foundations when reading the next paper in the field; up to 3 optional follow-up readings with reasons and tentatively missing foundations. |
 
 ## Design principles
 
@@ -179,6 +179,8 @@ Supply an arXiv link or local PDF, optionally with the sentence that blocked you
 
 After reading, ask: “Give me a complete, rigorous walkthrough of the theory or experiment.” The Skill starts with an outline, explains one segment at a time, and waits for your reply. “Continue” moves on; “this segment makes sense” explicitly confirms understanding; naming a difficulty leads to a focused explanation and a return to that segment. Simply saying you finished the paper prompts one optional invitation, not an automatic walkthrough.
 
+You can also ask “Where does this paper sit in the field?” or “What should I read next?” at any point. The Skill answers that request directly. By default, it gives the paper's position after the last Part 2 segment, then offers recommendations once and waits for agreement. Later papers reuse the shared profile while keeping confirmed understanding, previous explanations, and uncertainty distinct.
+
 Run the helper separately to inspect acquisition and navigation:
 
 ```sh
@@ -190,14 +192,25 @@ python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
+python3 skills/paper-foundations/scripts/paperread.py lookup 1002.3895
+python3 skills/paper-foundations/scripts/paperread.py lookup 10.1103/RevModPhys.82.3045
+python3 skills/paper-foundations/scripts/paperread.py profile concepts --exclude-paper 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py profile concepts --status known
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type overview --last 1
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type sentence --last 5
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type deep --last 5
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type field --last 5
 ```
 
-`text` is the only command that outputs plain text. It preserves the reading order of section titles, numbered paragraphs, display equations with LaTeX, and figure/table captions; `--section` includes that section and its subsections. The full structure remains available in `paper.json`. Search both a concept's name and its LaTeX notation, then check the meaning in context. `ref` accepts a reference number or entry ID, such as `26` or `bib.bib19`, and returns the paper's bibliography entry and saved links; read and verify the cited source before using it to support an explanation.
+`text` is the only command that outputs plain text. It preserves the reading order of section titles, numbered paragraphs, display equations with LaTeX, and figure/table captions; `--section` includes that section and its subsections. The full structure remains available in `paper.json`. Search both a concept's name and its LaTeX notation, then check the meaning in context. `ref` accepts a reference number or entry ID, such as `26` or `bib.bib19`, and returns the bibliography entry, links, and extracted `doi` / `arxiv_id` (`null` when absent).
+
+`lookup <DOI|arXiv ID>` returns title, authors, year, abstract, source service, and links. It uses the arXiv API for arXiv IDs and OpenAlex with a Crossref fallback for DOI abstracts, caching results under `~/.paperread/lookup/` (or `PAPERREAD_HOME`). Cached lookups work offline; `--refresh` requests a new lookup. Missing abstracts stay `null`, and unavailable services or sources must be reported as verification limits. Finding a title does not verify a claim: read the abstract before marking `checked: "abstract"`, and the relevant full text before making specific scientific claims or marking `fulltext`.
+
+`profile concepts` lists concept records with their status, paper, and location; filter with `--status known|explained|unsure` and exclude the current paper with `--exclude-paper`. Exclusion covers all versions of the same arXiv ID. Records with no paper source may inform background but cannot be presented as concepts covered in a previous paper. Similar names alone do not establish matching concepts or understanding.
 
 `log show --type overview --last 1` finds an earlier overview even after many sentence explanations: type filtering happens before selecting the last N records. Omit `--type` to include all types; `--last 0` returns all matching records. Old records without `type` count as `sentence`, without rewriting the log. The host records an overview with `type: "overview"` and `where: null`; sentence explanations default to `sentence`. Part 2 uses `type: "deep"`, a positive integer `segment` starting at 1, and a `uses` string array (default `[]`); other types cannot include `segment`. Feedback is appended with the same segment number and the reader's original words, so feedback rows do not count as new segments. Logging an explanation or receiving “continue” never establishes understanding. See the [output templates](skills/paper-foundations/references/output-template.md) for explanation and feedback records.
+
+The paper's position and next readings each use one `type: "field"` record after delivery: `where: null`, `kind: "position"` or `"next"`, and an `items` array of checked sources. Items carry `label`, `title`, `role`, `checked`, and `link`; next readings also require a `missing` string array. Roles are `foundational|predecessor|contrast` for position and `notes|foundational|recent` for next readings. A position label identifies the paper's reference; a next-reading label may be empty or `null`. `checked` is `abstract` or `fulltext` based on what was actually read, not on a successful lookup. Invitations are not completed recommendations, and `field` never accepts `segment` or automatically changes concept status.
 
 Private data defaults to `~/.paperread/`; override it with `PAPERREAD_HOME`. Both hosts share that profile by default. Cached fetches make no network requests. Older HTML caches are updated by reparsing the saved `source.html` locally, preserving metadata, outlines, and logs; if that source is missing, the tool requests `fetch --refresh`. An unversioned ID uses the highest cached version; add `--refresh` to check for a newer version. Cache names replace `/` in legacy IDs with `_`.
 
@@ -210,6 +223,8 @@ python3 -B -m unittest discover -s tests -v
 See [implementation.md](docs/implementation.md) for the specification and [validation.md](docs/validation.md) for checks and limitations (Chinese).
 
 The [Part 2 development example](examples/2610.27436v1-deep-trial.md) contains an outline and five segments in Chinese. It checks output structure and evidence boundaries; it contains no real reader feedback between segments.
+
+The [cross-paper development example](examples/2610.27436v1-to-1002.3895-field-trial.md) moves from an SSH impurity paper to a topological-insulator review, showing field context, reading suggestions, carried-over foundations, and tool checks using an isolated simulated profile.
 
 ## Repository contents
 

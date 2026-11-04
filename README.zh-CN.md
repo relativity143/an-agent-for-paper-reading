@@ -26,9 +26,9 @@
 6. **根据反馈调整。** 读者仍然卡住时，找到卡在哪里，继续展开；这段读通了，就接着往下读。
 7. **读完后的完整讲解（第二部分）。** 读者表示读完全文后，Agent 只提议一次，等同意后再讲；读者明确要求完整讲解时直接给目录。这一遍不再为读懂而简化：写全模型或实验设定、符号与约定、近似及适用条件，按逻辑顺序走完关键推导或测量流程，说明每个主要结论由哪些计算、测量或图支持，支持到什么程度，局限在哪里。第一部分讲过且状态为 `explained` 或 `known` 的基础可以直接用，标出讲过的位置；`unsure` 不能当作已会。先给目录，之后一次只讲一段并等待回复，每段末尾列出用到的基础。“继续”只推进讲解；明确表示本段看懂或读顺时，才按确认范围更新本段 `uses` 中的概念，保存原话。卡住时只把相关概念记为 `unsure`，按第一部分补讲，再回到当前段。它既把逐句补上的零散基础串成整体，也让读者自己判断学得怎么样；系统不出题、不打分，不替读者宣称已经理解。
 8. **从这一篇走进领域。** 读懂一篇论文，也包括知道它在领域中的位置。这一步保持克制，只做三件事：
-   - **本篇在领域中的位置。** 在导读或第二部分末尾，用几行列出这篇直接依赖或对照的 3 到 5 项工作，分为奠基工作、直接前作和对照工作；每项一句话，说明那项工作建立了什么，本文怎样使用它或与它有何不同。这些工作取自论文自己的引言和参考文献，逐条打开核对，没有核对过的不写。
-   - **跨篇积累。** 读者档案在不同论文之间共用。读同一领域的下一篇时，读者已经确认懂了的基础直接沿用，导读里说明还缺哪些。读得越多，要补的越少。
-   - **下一篇读什么（可选）。** 第二部分结束后，提议 2 到 3 篇接着读的文献，每篇说明为什么读，以及按读者档案还缺哪些基础；通常搭配一份补基础的讲义或综述、一篇奠基论文和一篇相关的新工作。
+   - **本篇在领域中的位置。** 默认紧接第二部分最后一段给出，读者主动问时也可直接给。列出本篇直接依赖或对照的 3 到 5 项工作，分为奠基工作、直接前作和对照工作，取自本篇引言、正文和参考文献。逐条核对来源，标明读到摘要还是全文，区分本文作者对前作的描述与来源核对后的事实；具体结论须读原文相关部分。核实不足时少列并说明，不凑数；首次导读不展开这一项。
+   - **跨篇积累。** 导读前查看其他论文的概念记录：`known` 表示明确确认懂了，`explained` 只表示讲过，`unsure` 仍需补。标出真实的论文来源，不把缺少来源的概念编成前一篇学过的内容。沿用基础前核对含义和适用条件，不仅按名称相似判断。
+   - **下一篇读什么（可选）。** 第二部分和本篇位置都结束后，只提议一次，等同意再推荐；主动要求时直接推荐，不强制先完成其他阶段。最多 3 篇已核实文献，每篇附理由、来源链接、核对层次和按档案暂定还缺的基础。讲义或综述、奠基论文、相关新工作是可选类别，不必凑齐。
 
    不做完整的领域知识体系、长篇文献史或全自动引用网络；需要时借助现有的文献检索工具。
 
@@ -53,7 +53,7 @@
 | 上下文术语表 | 作为辅助，解释基本术语、缩写、符号、别名或译名，以及它们在论文中的具体用法。 |
 | 回到全文的引导 | 将补充的基础对应回原句中的词、公式和图表，说明这一段在全文中的作用和前后衔接，标出后文再次用到这些概念的位置，并提供来源链接。 |
 | 完整讲解（第二部分） | 读完全文后，以接近原文的严谨程度分段重讲核心原理或实验：设定与假设、推导或测量流程、证据链、适用条件；每段标出用到的基础，供读者自查。 |
-| 本篇在领域中的位置与下一步阅读 | 本篇直接依赖或对照的几项工作及其关系，逐条核对来源；读同领域下一篇时沿用已懂的基础；可选的 2 到 3 篇后续文献及各自还缺的基础。 |
+| 本篇在领域中的位置与下一步阅读 | 本篇直接依赖或对照的几项工作及其关系，逐条核对来源；读同领域下一篇时沿用已确认懂了的基础；可选的最多 3 篇后续文献，附理由和各自暂定还缺的基础。 |
 
 ## 设计原则
 
@@ -179,6 +179,8 @@ sh scripts/install.sh
 
 读完后可以说：“请把这篇论文的原理或实验完整、严格地再讲一遍。”Skill 先给目录，再一次讲一段并等你回复。“继续”表示往下讲；“这段看懂了／读顺了”才是明确确认理解；指出卡点后会针对补讲，再回到当前段。仅说读完了，只会得到一次可选择的邀请，不会自动开始完整讲解。
 
+也可以随时问“这篇在领域里是什么位置”或“接下来读什么”，Skill 会直接处理对应请求。默认在第二部分最后一段后给出本篇位置，再提议一次后续阅读并等待同意。读下一篇时沿用共用档案，同时区分已经确认懂了、讲过未确认和仍不确定的基础。
+
 工具可单独运行，用于检查获取和定位：
 
 ```sh
@@ -190,14 +192,25 @@ python3 skills/paper-foundations/scripts/paperread.py context 2610.27436v1 S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 "winding number" --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py find 2610.27436v1 '\omega' --after S1.p4
 python3 skills/paper-foundations/scripts/paperread.py ref 2610.27436v1 26
+python3 skills/paper-foundations/scripts/paperread.py lookup 1002.3895
+python3 skills/paper-foundations/scripts/paperread.py lookup 10.1103/RevModPhys.82.3045
+python3 skills/paper-foundations/scripts/paperread.py profile concepts --exclude-paper 2610.27436v1
+python3 skills/paper-foundations/scripts/paperread.py profile concepts --status known
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type overview --last 1
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type sentence --last 5
 python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type deep --last 5
+python3 skills/paper-foundations/scripts/paperread.py log show 2610.27436v1 --type field --last 5
 ```
 
-只有 `text` 输出纯文本，按原文顺序保留节标题、带编号的段落、含 LaTeX 的行间公式以及图表标题；`--section` 包含该节及其子节，完整结构仍可查看 `paper.json`。查找后文时，概念名及其 LaTeX 符号都要搜，再核对上下文中的含义。`ref` 接受参考文献编号或条目 ID（如 `26` 或 `bib.bib19`），返回本篇条目及保存的链接；须实际读取并核对所引来源，才能用它支持讲解。
+只有 `text` 输出纯文本，按原文顺序保留节标题、带编号的段落、含 LaTeX 的行间公式以及图表标题；`--section` 包含该节及其子节，完整结构仍可查看 `paper.json`。查找后文时，概念名及其 LaTeX 符号都要搜，再核对上下文中的含义。`ref` 接受参考文献编号或条目 ID（如 `26` 或 `bib.bib19`），返回本篇条目、链接和解析出的 `doi` / `arxiv_id`（没有时为 `null`）。
+
+`lookup <DOI|arXiv 编号>` 返回标题、作者、年份、摘要、来源服务和链接。arXiv 编号查 arXiv API；DOI 先查 OpenAlex，摘要缺失时再查 Crossref。结果缓存在 `~/.paperread/lookup/`（或 `PAPERREAD_HOME` 下），命中缓存时可离线复用，`--refresh` 才重新请求。没有摘要时保留 `null`；服务或来源不可用时须说明核实限制。查到标题不等于确认主张：实际读过摘要才可标 `checked: "abstract"`，具体科学结论及 `fulltext` 标记须以原文相关内容的实际核对为依据。
+
+`profile concepts` 列出概念状态及论文、位置，可用 `--status known|explained|unsure` 筛选，以 `--exclude-paper` 排除当前论文，包括同一 arXiv 编号的其他版本。缺少论文来源的记录可用于判断背景，但不能声称是在前一篇讲过的；术语名字相似也不足以证明概念相同或读者已经理解。
 
 `log show --type overview --last 1` 先筛选类型再取最后一条，避免导读被较新的逐句讲解挤出近期记录而漏判。不传 `--type` 时包含所有类型；`--last 0` 返回全部匹配记录。旧记录缺少 `type` 时按 `sentence` 处理，不改写旧日志。宿主将导读保存为 `type: "overview"`、`where: null`；逐句讲解默认为 `sentence`。第二部分使用 `type: "deep"`，须有从 1 开始的正整数 `segment`，以及字符串数组 `uses`（默认 `[]`）；其他类型不得带 `segment`。反馈另行追加，沿用原段号并保留原话，因此反馈行不能算作新讲解段。讲过以及“继续”都不等于确认读者已经理解。讲解与反馈记录示例见 [输出模板](skills/paper-foundations/references/output-template.md)。
+
+本篇位置和后续推荐实际输出后，各记一条 `type: "field"`：`where: null`、`kind: "position"` 或 `"next"`，以及只含已核实条目的 `items` 数组。每项有 `label`、`title`、`role`、`checked` 和 `link`，推荐项还须有字符串数组 `missing`。位置角色为 `foundational|predecessor|contrast`，推荐角色为 `notes|foundational|recent`；位置的 `label` 是本篇参考文献标识，推荐的可为空字符串或 `null`。`checked` 按实际阅读填写 `abstract` 或 `fulltext`，不是工具成功就自动确认。邀请不能记为已完成推荐；`field` 不得带 `segment`，也不自动改变概念状态。
 
 数据默认保存在 `~/.paperread/`，可通过 `PAPERREAD_HOME` 指定其他私有目录。两个宿主默认共用这份档案。已缓存论文不会重复下载；旧 HTML 缓存会从本地 `source.html` 重新解析，保留元数据、全文脉络和记录，源文件缺失时才提示 `fetch --refresh`。不带版本号时优先使用本地最高版本，需要查新版本时加 `--refresh`。旧式编号的缓存目录会将 `/` 替换为 `_`。
 
@@ -210,6 +223,8 @@ python3 -B -m unittest discover -s tests -v
 实现约定见 [implementation.md](docs/implementation.md)，验收结果和边界见 [validation.md](docs/validation.md)。
 
 [第二部分开发样例](examples/2610.27436v1-deep-trial.md)展示目录和五段讲解；它用于检查输出结构与证据边界，没有真实读者逐段反馈。
+
+[跨篇开发样例](examples/2610.27436v1-to-1002.3895-field-trial.md)展示从 SSH 杂质论文进入拓扑绝缘体综述：领域定位、下一篇建议、跨篇基础提示，以及隔离档案中的工具验收。
 
 ## 仓库内容
 

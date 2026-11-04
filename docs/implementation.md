@@ -2,7 +2,7 @@
 
 本文是 README 中“落地形式 · 第一步”的实现说明，供实现者直接照做。设计理念、阅读流程和设计原则以 [README.zh-CN.md](../README.zh-CN.md) 为准；本文只规定第一步怎么实现。
 
-**实现状态（2026-11-03）：** 第 14 节的第二轮修改和第 15 节的完整讲解流程均已落实到工具、Skill 与回归测试；具体检查、开发试跑及未验证范围见 [validation.md](validation.md)。
+**实现状态（2026-11-04）：** 第 14–16 节的第二至第四轮修改均已落实到工具、Skill 与回归测试，包括完整讲解和跨篇领域入门；具体检查、开发试跑及未验证范围见 [validation.md](validation.md)。
 
 ## 1. 目标与范围
 
@@ -55,6 +55,7 @@ an-agent-for-paper-reading/
 ```text
 ~/.paperread/
 ├── profile.json                     # 读者档案
+├── lookup/                          # DOI / arXiv 元数据缓存，文件名为规范化查询的哈希
 └── papers/<arxiv_id><version>/      # 例如 2610.27436v1
     ├── source.html                  # 原始 HTML 缓存（或 paper.pdf）
     ├── paper.json                   # 解析结果
@@ -169,7 +170,7 @@ LaTeXML 不标注句子，需要自己切分：
 | `outline-path <paper>` | 输出 `outline.md` 的路径和是否已存在，供宿主 Agent 读写。 |
 | `text <paper> [--section <节编号>]` | 按原文顺序输出节标题、带编号的段落、行间公式及图表标题；段内公式在原位置展开。指定节时包含其子节，不包含仅编号前缀相似的其他节。 |
 | `ref <paper> <编号>` | 按显示编号（如 `26`、`[26]`）或条目 ID（如 `bib.bib19`）返回对应参考文献及链接，未找到时返回错误。第四轮起另返回解析出的 `doi` 与 `arxiv_id`。 |
-| `lookup <DOI\|arXiv 编号>`（第四轮新增） | 返回文献的标题、作者、年份、摘要和来源链接，用于核对文献脉络和后续阅读推荐；结果缓存，见第 16 节。 |
+| `lookup <DOI\|arXiv 编号> [--refresh]` | 返回文献的标题、作者、年份、摘要和来源链接；默认复用缓存，`--refresh` 显式重新查询，见第 16 节。 |
 | `locate <paper> "<句子片段>"` | 在所有句子中模糊匹配（先规范化空白、大小写；去掉 `$...$` 后再比对一次，因为从 PDF 复制的公式与 LaTeX 不同），用 `difflib` 打分，输出得分最高的 3 个候选：句子编号、段落编号、所属节、句子原文、分数。 |
 | `context <paper> <段落编号> [--before N] [--after N]` | 输出该段落及前后各 N 段（默认 1）的完整文本和所属节。 |
 | `find <paper> "<词或符号>" [--after <段落编号>]` | 在段落、图表主标题、子图标题、公式 LaTeX 中不区分大小写查找，输出出现位置（编号、类型、所属节、前后 60 字片段）。子图命中保留自己的编号和 `parent` 图表编号。带 `--after` 时只输出该位置之后的结果，用于标出“后文还会用到”的地方。 |
@@ -177,9 +178,9 @@ LaTeXML 不标注句子，需要自己切分：
 | `profile set-background "<文字>"` | 记录读者自述的背景。 |
 | `profile set-area <领域编号> studied\|heard\|none` | 记录读者对某个基础领域的大致程度。 |
 | `profile mark "<概念>" known\|unsure\|explained [--paper <paper>] [--where <编号>]` | 记录某个具体概念的状态和出处。 |
-| `profile concepts [--status <状态>] [--exclude-paper <paper>]`（第四轮新增） | 列出档案中的概念记录及其论文和位置，可按状态筛选或排除当前论文，用于导读前的跨篇对照。 |
-| `log add <paper> --json '<记录>'` | 追加一条记录；`--json -` 从标准输入读取。`type` 为 `overview`、`sentence` 或 `deep`，缺省为 `sentence`；`overview` 的 `where` 须为 `null`。`deep` 须带正整数 `segment` 和字符串数组 `uses`（省略时补空数组）；其他类型不得带 `segment`。 |
-| `log show <paper> [--type sentence\|overview\|deep] [--last N]` | 先按类型筛选，再取最近 N 条，默认 10 条；`--last 0` 读取全部匹配记录。旧记录缺少 `type` 时按 `sentence` 返回，不回写历史日志。用 `--type overview --last 1` 检查导读，用 `--type deep --last 0` 检查完整讲解进度。 |
+| `profile concepts [--status <状态>] [--exclude-paper <paper>]` | 返回概念对象数组（`concept`、`status`、`paper`、`where` 等），支持组合筛选。同一 arXiv 编号的不同版本均视为同篇；无来源的 `paper`/`where` 为 `null`，不能用作跨篇学过的证据。 |
+| `log add <paper> --json '<记录>'` | 追加一条记录；`--json -` 从标准输入读取。`type` 为 `overview`、`sentence`、`deep` 或 `field`，缺省为 `sentence`；`overview` 和 `field` 的 `where` 须为 `null`。`deep` 须带正整数 `segment` 和字符串数组 `uses`（省略时补空数组）；其他类型不得带 `segment`。`field` 校验见第 6.2 节。 |
+| `log show <paper> [--type sentence\|overview\|deep\|field] [--last N]` | 先按类型筛选，再取最近 N 条，默认 10 条；`--last 0` 读取全部匹配记录。旧记录缺少 `type` 时按 `sentence` 返回，不回写历史日志。用 `--type overview --last 1` 检查导读，用 `--type deep` 或 `--type field` 查看对应阶段。 |
 
 ## 6. 数据格式
 
@@ -220,6 +221,8 @@ LaTeXML 不标注句子，需要自己切分：
 `segment` 必须是 JSON 正整数，布尔值、浮点数和数字字符串都不接受；非 `deep` 类型即使传 `segment: null` 也会报错。`uses` 可以为空，省略时补 `[]`；若提供，须为字符串数组。反馈沿用正在回应的段号，不另算讲完了一段；单纯反馈的 `explained` 留空。日志追加本身不改读者档案。
 
 第四轮新增 `field` 类型，记录“本篇在领域中的位置”和“下一篇读什么”（第 8.4 节）。`where` 为 `null`；`kind` 为 `position` 或 `next`；`items` 是对象数组，每项包含 `label`（如 `"[26]"`，后续阅读推荐可为空）、`title`、`role`（`position` 时为 `foundational`、`predecessor` 或 `contrast`；`next` 时为 `notes`、`foundational` 或 `recent`）、`checked`（`abstract` 或 `fulltext`，表示实际核对到哪一层）、`link`，`next` 的每项另加 `missing`（按读者档案暂定还缺的基础，字符串数组）。没有核对过的条目不写入。
+
+`position.label` 必须为非空文字；`next.label` 可为空字符串或 `null`。每项须有非空 `title` 和有效的 HTTP(S) 来源链接。`checked` 由宿主根据实际阅读填写，查询成功、查到标题或取得摘要本身都不等于已经完成内容核对。`field` 日志不会更新读者档案；推荐的 `missing` 是暂定判断，不直接变成 `unsure`。
 
 ### 6.3 全文脉络 `outline.md`
 
@@ -490,12 +493,14 @@ areas:
 3. **`references/explain-rules.md`。** 加入第 13 条。
 4. **`profile concepts [--status known|explained|unsure] [--exclude-paper <paper>]`。** 列出档案中的概念记录及其论文和位置，按状态筛选，或排除当前论文，用于导读前的跨篇对照。档案变大后，不必把整份档案读进上下文。
 5. **`ref` 输出补充可查的编号。** 从条目链接和文本中解析出 `doi` 与 `arxiv_id`（没有就为 `null`），供 `lookup` 使用。
-6. **新增 `lookup <DOI|arXiv 编号>`。** 返回标题、作者、年份、摘要和来源链接，用于核对文献：
+6. **新增 `lookup <DOI|arXiv 编号> [--refresh]`。** 返回标题、作者、年份、摘要和来源链接，用于核对文献：
    - arXiv 编号用 arXiv API（`export.arxiv.org/api/query`）。
    - DOI 先查 OpenAlex（摘要由 `abstract_inverted_index` 还原），没有摘要时再查 Crossref；都没有摘要时 `abstract` 为 `null`，宿主须另行打开来源。
    - 遵守各服务的访问频率要求，沿用现有的请求间隔；结果缓存在 `~/.paperread/lookup/`，不重复请求。
    - User-Agent 只写项目名和仓库地址，不附带读者的邮箱或其他个人信息。
    - 输出 JSON，并注明来源服务；摘要只能说明那项工作大致做了什么，不能当作已核对其具体结论。
+   - `source` 标明主要元数据服务，`abstract_source` 标明摘要服务；`sources` 列出身份核对成功的服务，`source_urls` 保留实际尝试的接口，错误或缺失情况保留在 `warnings`。arXiv 年份取首版发表年，可能与期刊年份不同。
+   - 缓存键基于规范化 DOI 或 arXiv 查询，含版本的查询分别保存；重复查询不联网，刷新失败保留旧缓存。只有标题等元数据但没有摘要时，返回 `abstract: null`；所有服务均失败或标识不匹配时返回错误，不缓存空成功结果。
 7. **`log add` 接受 `type: "field"`。** 按第 6.2 节校验 `kind` 和 `items`：`where` 必须为 `null`；`items` 为对象数组，`role` 和 `checked` 取规定的值；`next` 的每项须有字符串数组 `missing`。
 8. **测试。** 覆盖 `profile concepts` 的筛选、`ref` 解析出 DOI 和 arXiv 编号、`lookup` 的解析与缓存（用离线样例，不联网）、`field` 记录的校验。
 9. **试跑（跨篇）。** 先用 `2610.27436v1` 走完导读、一句讲解、第二部分和第 8 步；再打开同一领域的 `1002.3895`（拓扑绝缘体综述），检查导读是否正确标出前一篇已经补过的基础，以及讲过和确认懂了是否分开。存入 `examples/`。

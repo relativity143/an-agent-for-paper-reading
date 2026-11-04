@@ -164,13 +164,13 @@ class SecondRoundCliTests(unittest.TestCase):
         self.assertIn("S404", self.error(self.cli("text", PAPER, "--section", "S404")))
 
     def test_ref_resolves_number_printed_label_and_source_id(self):
-        expected = self.data["references"][0]
+        expected = dict(self.data["references"][0], doi="10.0000/synthetic.26", arxiv_id="0000.00026")
         for identifier in ("26", "[26]", "bib.bib19"):
             with self.subTest(identifier=identifier):
                 actual = json.loads(self.success(self.cli("ref", PAPER, identifier)))
                 self.assertEqual(actual, expected)
         actual = json.loads(self.success(self.cli("ref", PAPER, "27")))
-        self.assertEqual(actual, self.data["references"][1])
+        self.assertEqual(actual, dict(self.data["references"][1], doi=None, arxiv_id=None))
 
     def test_unknown_reference_returns_json_error(self):
         self.assertIn("999", self.error(self.cli("ref", PAPER, "999")))
