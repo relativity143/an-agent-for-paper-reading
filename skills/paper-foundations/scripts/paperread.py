@@ -986,6 +986,14 @@ class Store:
             raise PaperError("Log type must be one of: " + ", ".join(LOG_TYPES) + ".")
         if record_type in ("overview", "recap") and record.get("where") is not None:
             raise PaperError("A %s log must have where=null." % record_type)
+        if record_type == "sentence":
+            if "point" in record and not isinstance(record["point"], str):
+                raise PaperError("A sentence log point must be a string.")
+            if "step" in record and record["step"] is not None:
+                if type(record["step"]) is not int or record["step"] < 1:
+                    raise PaperError("A sentence log step must be a positive integer or null.")
+        elif "step" in record:
+            raise PaperError("Only sentence logs may include step.")
         if record_type == "deep":
             if type(record.get("segment")) is not int or record["segment"] < 1:
                 raise PaperError("A deep log requires a positive integer segment (starting at 1).")
