@@ -54,6 +54,8 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 主体接口见 `docs/agent-architecture.md`。本轮新增细节记录在 `docs/implementation.md` 第 21 节。
 
+继续做浏览器联调时，先看 [给 Claude 的 M1 交接说明](../docs/claude-m1-handoff.md)，其中列出了前端待改位置、恢复流程和验收清单。
+
 1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。
 2. `POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue"}`，或带选中文本的 `ask`。
 3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字，`result` 是一个 JSON 讲解对象；每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭。
