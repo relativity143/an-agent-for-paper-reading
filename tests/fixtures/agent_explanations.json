@@ -1,0 +1,99 @@
+{
+  "note": "Small synthetic M1 contract fixtures; no real paper content or reader records.",
+  "paper": "synthetic-contract-paper",
+  "explanations": [
+    {
+      "id": "synthetic-overview",
+      "type": "overview",
+      "paper": "synthetic-contract-paper",
+      "title": "Synthetic paper for structural tests",
+      "question": {
+        "text": "What changes when a model parameter changes?",
+        "where": {"ids": ["S1.p1"], "page": null, "quote": null}
+      },
+      "model": {
+        "summary": "A deliberately unspecified teaching model.",
+        "items": [
+          {"label": "Object", "text": "A synthetic system.", "where": {"ids": ["S1.p2"], "page": null, "quote": null}}
+        ]
+      },
+      "conclusions": {
+        "text": "The fixture does not establish a scientific result.",
+        "where": {"ids": ["S2.p1"], "page": null, "quote": null}
+      },
+      "foundations": [{"name": "Model parameter", "note": "A quantity that specifies a model."}],
+      "previously": [],
+      "route": {
+        "steps": [
+          {"step": 1, "name": "Question", "range": "S1.p1"},
+          {"step": 2, "name": "Model", "range": "S1.p2"},
+          {"step": 3, "name": "Limits", "range": "S2"}
+        ],
+        "skim": "Implementation details may be left for a later pass."
+      },
+      "next": {"text": "Start with the question.", "where": {"ids": ["S1.p1"], "page": null, "quote": null}},
+      "highlights": [{"ids": ["S1.p1"], "page": null, "quote": null, "label": "Question"}]
+    },
+    {
+      "id": "synthetic-point-one",
+      "type": "point",
+      "paper": "synthetic-contract-paper",
+      "point": "What the model parameter denotes",
+      "section": "Synthetic setup",
+      "where": {"ids": ["S1.p1"], "page": null, "quote": "A parameter specifies the example model."},
+      "intro": "Separate the input parameter from a calculated result.",
+      "assumes": [{"concept": "Model parameter", "status": "new", "explained_at": null, "note": "Synthetic display state."}],
+      "concepts": [
+        {
+          "name": "Model parameter",
+          "in_this_paper": "It labels the synthetic examples being compared.",
+          "in_this_paper_where": ["S1.p1", "S1.p2"],
+          "itself": "A parameter is an input used to specify the model.",
+          "sources": [{"title": "Synthetic source URL for structural checks", "url": "https://example.org/model#parameter"}]
+        }
+      ],
+      "together": "Distinguish a model input from its output.",
+      "back_to_text": "The word parameter labels the input in the synthetic sentence.",
+      "unexpanded": ["Model limitations"],
+      "progress": {
+        "step": 1,
+        "steps_total": 3,
+        "text": "The question has been introduced; model details follow.",
+        "next": {"point": "Which assumptions define the model", "where": {"ids": ["S1.p2"], "page": null, "quote": null}}
+      },
+      "highlights": [{"ids": ["S1.p1"], "page": null, "quote": null, "label": "Current point"}]
+    },
+    {
+      "id": "synthetic-point-two",
+      "type": "point",
+      "paper": "synthetic-contract-paper",
+      "point": "Which assumptions define the model",
+      "section": "Synthetic setup",
+      "where": {"ids": ["S1.p2"], "page": null, "quote": null},
+      "intro": "Identify the assumptions before drawing a conclusion.",
+      "assumes": [
+        {"concept": "Model parameter", "status": "explained", "explained_at": "S1.p1", "note": "Previously explained in this synthetic sequence."},
+        {"concept": "Assumption", "status": "unsure", "explained_at": null, "note": "A simulated unresolved prerequisite."}
+      ],
+      "concepts": [
+        {
+          "name": "Assumption",
+          "in_this_paper": "It limits the scope of the synthetic model.",
+          "in_this_paper_where": ["S1.p2", "S2.p1"],
+          "itself": "An assumption specifies a condition under which a model is used.",
+          "sources": []
+        }
+      ],
+      "together": "Interpret an output within the stated assumptions.",
+      "back_to_text": "The synthetic passage states the model conditions.",
+      "unexpanded": [],
+      "progress": {
+        "step": 2,
+        "steps_total": 3,
+        "text": "The model conditions are introduced; their limits remain.",
+        "next": {"point": "Limits of the example", "where": {"ids": ["S2.p1"], "page": null, "quote": null}}
+      },
+      "highlights": [{"ids": ["S1.p2"], "page": null, "quote": null, "label": "Model conditions"}]
+    }
+  ]
+}
