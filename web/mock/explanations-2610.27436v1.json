@@ -1,0 +1,145 @@
+{
+ "note": "手写的样例讲解，供前端开发和后端结构校验使用。内容改写自 examples/ 下的开发样例，读者背景和状态都是模拟的，不是真实阅读记录。",
+ "paper": "2610.27436v1",
+ "explanations": [
+  {
+   "id": "mock-0001",
+   "type": "overview",
+   "paper": "2610.27436v1",
+   "title": "Steering of topological criticality in the Su-Schrieffer-Heeger chain via non-Hermitian substitutional impurities",
+   "question": {
+    "text": "一条原本干净的一维链具有拓扑性质。往里随机掺入一种特殊杂质后，它的拓扑性质会不会变，在什么参数下变？",
+    "where": {"ids": ["S1.p4"], "page": null, "quote": null}
+   },
+   "model": {
+    "summary": "纯理论加数值计算，没有实验。",
+    "items": [
+     {"label": "研究对象", "text": "SSH 链：一排格点，每个晶胞有 A、B 两个格点，相邻格点之间的耦合交替为晶胞内的 $v$ 和晶胞间的 $w$。不掺杂时，$v<w$ 是拓扑相，开链两端各有一个接近零能的边缘态；$v>w$ 是平庸相；分界在 $v=w$。", "where": {"ids": ["S2.E1", "S1.p1"], "page": null, "quote": null}},
+     {"label": "杂质", "text": "随机把一部分格点换成杂质，只改它附近的耦合，并让“跳向杂质”和“跳离杂质”的强度不同（$h+\\gamma$ 与 $h-\\gamma$）。这种方向上的不对称让哈密顿量不再厄米。", "where": {"ids": ["S2.E2"], "page": null, "quote": null}},
+     {"label": "调节的参数", "text": "$v/w$、杂质浓度 $r$、杂质参数 $h$ 和 $\\gamma$，分对称和不对称两种配置。", "where": {"ids": ["S2.SS1.p2"], "page": null, "quote": null}},
+     {"label": "计算的量", "text": "实空间绕数 $\\omega$，用来判断拓扑相；IPR，衡量本征态的局域程度；$f_{\\rm Im}$，复数本征值所占的比例。都是对许多随机样本做数值对角化后取平均。", "where": {"ids": ["S2.E3", "S2.E4", "S2.SS4.p1"], "page": null, "quote": null}}
+    ]
+   },
+   "conclusions": {
+    "text": "以下是作者报告的结论，限于其模型和参数。单个杂质不改变 $\\omega$；杂质增多后，拓扑相变区变宽；改变杂质内外耦合的不对称方式，可以把相边界推向拓扑区或平庸区，这是本文的主打结果；有限尺寸标度得到的临界指数不同于无杂质的 SSH 链。",
+    "where": {"ids": ["S3.p1", "S4.p1", "S5.p2", "S6.p4"], "page": null, "quote": null}
+   },
+   "foundations": [
+    {"name": "能带与能隙", "note": "哪些能量上有本征态，零能附近有没有空出的区间。无杂质的 SSH 链中，拓扑分类以能隙不闭合为前提。"},
+    {"name": "拓扑不变量（绕数）", "note": "一个只取整数的量，参数连续变化时保持不变，除非能隙闭合。$\\omega$ 是它在有杂质时的算法。"},
+    {"name": "非厄米哈密顿量", "note": "$H$ 不等于它的共轭转置时，本征值可以是复数，左右本征态也不再相同。"}
+   ],
+   "previously": [],
+   "route": {
+    "steps": [
+     {"step": 1, "name": "问题与杂质模型", "range": "S1–S2.SS1"},
+     {"step": 2, "name": "拓扑与谱的诊断", "range": "S2.SS2–S2.SS4"},
+     {"step": 3, "name": "单杂质基线", "range": "S3"},
+     {"step": 4, "name": "随机杂质与相边界", "range": "S4–S5"},
+     {"step": 5, "name": "有限尺寸与临界参数", "range": "S6"},
+     {"step": 6, "name": "结论与后续问题", "range": "S7"}
+    ],
+    "skim": "谱圈和趋肤效应的讨论（S4.p8–p10）以及附录 A 的数值处理，第一遍可以略读。"
+   },
+   "next": {
+    "text": "建议从模型一节开始读。读到哪里不明白，就选中那段原文来问；也可以点“继续”，我从主线第 1 步讲起。",
+    "where": {"ids": ["S2.SS1.p1"], "page": null, "quote": null}
+   },
+   "highlights": [
+    {"ids": ["S1.p4"], "page": null, "quote": null, "label": "全文的问题"}
+   ]
+  },
+  {
+   "id": "mock-0002",
+   "type": "point",
+   "paper": "2610.27436v1",
+   "point": "杂质为什么打断干净链的动量分块",
+   "section": "II.2 Real-Space Winding Number",
+   "where": {"ids": ["S2.SS2.p1"], "page": null, "quote": "The introduction of localized impurities breaks the translational symmetry of the pristine SSH chain, rendering the conventional momentum-space topological invariants ill-defined."},
+   "intro": "干净的周期 SSH 链由一节节相同的晶胞组成，每个晶胞有 A、B 两个格点。胞内两点之间的跃迁振幅记为 $v$，相邻晶胞之间的跃迁振幅记为 $w$。局域杂质改变了它附近的这些连接。这一段要弄清楚：原来按波数分别处理干净链的方法为什么不再适用，以及作者怎样继续判断含杂质样本的体拓扑。",
+   "assumes": [
+    {"concept": "平移对称性与动量 $k$", "status": "new", "explained_at": null, "note": "你说固体物理只是听说过，这一轮补上。"},
+    {"concept": "动量空间绕数", "status": "new", "explained_at": null, "note": "导读里提到过绕数，没有展开，这一轮补上。"}
+   ],
+   "concepts": [
+    {
+     "name": "平移对称性与动量 $k$",
+     "in_this_paper": "干净链体区的胞内 $v$ 和胞间 $w$ 按相同方式逐胞重复，按波数 $k$ 分块靠的就是这项对称性。作者指出局部杂质打破了它，接着改用实空间绕数。读这一段时，盯住一件事：把链平移一个晶胞后，杂质附近的连接还能不能与原来的配置重合。",
+     "in_this_paper_where": ["S2.SS1.p1", "S2.SS1.p2", "S2.SS2.p1"],
+     "itself": "结论先说：每个晶胞都一样时，整条链的问题可以拆成许多互不相干的小问题，每个小问题由一个数 $k$ 标记。\n\n把晶胞间距取为 1，平移算符 $T$ 的本征值可记作 $e^{ik}$。干净周期链中 $HT=TH$，所以不同 $k$ 的分量各自独立，每个 $k$ 只需要 A、B 两个振幅。局部杂质使链平移后不再是原来的样子，不同 $k$ 的分量就可能混合。",
+     "sources": [{"title": "Asbóth 等，A Short Course on Topological Insulators，第 1 章 §2", "url": "https://arxiv.org/html/1509.02295v1#S2"}]
+    },
+    {
+     "name": "动量空间绕数",
+     "in_this_paper": "干净 SSH 链的动量空间绕数可用来区分拓扑相，作者说的“常规动量空间指标”指的就是这一类量。作者换掉了这类依赖动量分块的判据，后面比较相边界时用的是实空间绕数 $\\omega$。读相图时，先认准图中的绕数来自含杂质的样本。",
+     "in_this_paper_where": ["S2.SS2.p1", "S5.p2"],
+     "itself": "结论先说：它是一个整数，数的是一条闭合曲线绕原点几圈，圈数带方向。\n\n教学例取干净、厄米且 $v,w>0$ 的周期链。在一种傅里叶约定下，$h(k)=v+we^{ik}$ 随 $k$ 走完一个周期，在复平面上画出一个圆。$w>v$ 时圆围住原点，$v>w$ 时没有围住，$v=w$ 时圆经过原点，绕数在这里没有定义。",
+     "sources": [{"title": "Asbóth 等，A Short Course on Topological Insulators，第 1 章 §4.3", "url": "https://arxiv.org/html/1509.02295v1#S4.SS3"}]
+    }
+   ],
+   "together": "原方法依赖“每个晶胞一样、每个 $k$ 可以独立处理”。作者改用实空间方法，是要在没有这项周期性的样本上继续做拓扑诊断。",
+   "back_to_text": "你选中的这句里，“conventional” 限定的是原先那套动量空间指标；后一句的 real-space winding number 接到式 (3)。这个诊断直接使用固定杂质样本的本征态和晶胞位置来表征体拓扑。注意：上面的波数 $k$ 是教学记号，不要和原文里杂质所在的第 $k$ 个晶胞混为一谈，后者是整数位置编号。",
+   "unexpanded": ["实空间绕数的完整算法", "$Q$", "$\\Gamma$", "$\\operatorname{Tr}'$"],
+   "progress": {
+    "step": 2,
+    "steps_total": 6,
+    "text": "全文在研究随机杂质怎样改变 SSH 链的拓扑相。导读先交代了杂质会改变局部跃迁。这一段解释了原来的动量空间绕数为什么用不上了，为改用实空间绕数铺路。接下来先看左右本征态怎样配对，后面再用实空间绕数比较不同杂质配置下的相边界。",
+    "next": {"point": "左右本征态怎样配对", "where": {"ids": ["S2.SS2.p2"], "page": null, "quote": null}}
+   },
+   "highlights": [
+    {"ids": ["S2.SS2.p1"], "page": null, "quote": "The introduction of localized impurities breaks the translational symmetry of the pristine SSH chain, rendering the conventional momentum-space topological invariants ill-defined.", "label": "这一点"}
+   ]
+  },
+  {
+   "id": "mock-0003",
+   "type": "point",
+   "paper": "2610.27436v1",
+   "point": "左右本征态怎样配对",
+   "section": "II.2 Real-Space Winding Number",
+   "where": {"ids": ["S2.SS2.p2"], "page": null, "quote": null},
+   "intro": "作者接着处理杂质附近正反方向的跃迁振幅不同的情形。链仍由哈密顿量 $H$ 描述，但这里需要区分左、右两套本征态。这一段要弄清楚：两套本征态怎样配对，以及作者为什么在构造实空间绕数需要的矩阵 $Q$ 时同时用到它们。",
+   "assumes": [
+    {"concept": "动量空间绕数", "status": "explained", "explained_at": "S2.SS2.p1", "note": "上一轮讲过，还没有确认。"},
+    {"concept": "非厄米哈密顿量", "status": "unsure", "explained_at": null, "note": "导读里提到过，这一轮从矩阵元素讲起。"},
+    {"concept": "左右本征态", "status": "new", "explained_at": null, "note": "没有讲解记录，这一轮补上。"},
+    {"concept": "双正交配对", "status": "new", "explained_at": null, "note": "没有讲解记录，这一轮补上。"}
+   ],
+   "concepts": [
+    {
+     "name": "非厄米哈密顿量",
+     "in_this_paper": "它是含有非互易跃迁的链矩阵 $H$。作者让杂质附近往返两个方向的跃迁振幅不再互为复共轭，以此引入非厄米性，并因此在构造实空间绕数所需的 $Q$ 时使用两套本征态。读局部矩阵时，比较同一对格点的两个方向。",
+     "in_this_paper_where": ["S2.SS1.p2", "S2.SS2.p2"],
+     "itself": "结论先说：只要有一对格点，来回两个方向的跃迁不互为复共轭，$H$ 就不是厄米的。\n\n按格点排列列向量的分量，$H_{ij}$ 是从格点 $j$ 到 $i$ 的跃迁振幅，$H^\\dagger$ 是共轭转置。只要有一对 $H_{ij}$ 和 $H_{ji}$ 不互为复共轭，就有 $H\\ne H^\\dagger$。",
+     "sources": []
+    },
+    {
+     "name": "右向量与左向量",
+     "in_this_paper": "它们是同一个 $H$ 的右本征列向量和左本征行向量。作者在式 (4) 构造 $Q$ 时，把对应同一本征分量的列和行放在一起。读式 (4) 时，留意这两个向量分别放在哪一侧，并且都用同一个编号 $\\beta$。",
+     "in_this_paper_where": ["S2.SS2.p2", "S2.E4"],
+     "itself": "结论先说：非厄米时，从左边乘和从右边乘得到的本征向量是两套，不能互相代替。\n\n右向量满足 $H|R\\rangle=E|R\\rangle$，左向量满足 $\\langle L|H=E\\langle L|$。把右式取共轭转置得到的是 $\\langle R|H^\\dagger=E^*\\langle R|$，所以一般要另找满足左式的行向量。",
+     "sources": []
+    },
+    {
+     "name": "双正交配对",
+     "in_this_paper": "它指作者用 $V$ 的列与 $V^{-1}$ 的行配成的本征基底。这种配对使式 (4) 的每一项都对应一个可以单独取出的本征分量，作者再用构成的 $Q$ 计算式 (3) 的绕数。读这一步时，比较同编号与不同编号的行列相乘各得到什么。",
+     "in_this_paper_where": ["S2.SS2.p2", "S2.E4", "S2.E3"],
+     "itself": "结论先说：左右两套向量按编号一一配对，同编号相乘得 1，不同编号相乘得 0。\n\n这用到 $H$ 可对角化这一条件。把一套独立的右本征列排成 $V$，左本征行取自 $V^{-1}$。由 $V^{-1}V=I$，行列相乘时同编号得 1，不同编号得 0。所以左乘对应的行，就能读出一个右本征分量的展开系数。",
+     "sources": []
+    }
+   ],
+   "together": "要在这个非厄米模型中按本征分量组织计算，除了右本征态，还要用与它配对的左本征态。",
+   "back_to_text": "这一段的 right/left eigenstates 对应上面的两条本征方程，biorthogonal basis 对应左右配对；原文的 $\\beta$ 是本征态编号。式 (4) 中，$|\\beta_R\\rangle\\langle\\beta_L|$ 先用左向量 $\\langle\\beta_L|$ 读出输入态沿 $|\\beta_R\\rangle$ 的展开系数，再把系数乘回右向量，得到输入态的第 $\\beta$ 个本征分量。作者用这样的投影构造实空间绕数所需的 $Q$。式中 $Q$ 怎样选谱、零实部态怎样处理，这一轮还没有核清，留到下一点。",
+   "unexpanded": ["谱压平 $Q$", "实线隙", "零模", "绕数的迹归一化"],
+   "progress": {
+    "step": 2,
+    "steps_total": 6,
+    "text": "全文在研究杂质如何改变链的拓扑相。前面讲了为什么需要换成实空间诊断。这里补上了左右本征态的配对，说明式 (4) 怎样用它们取出各个本征分量。接下来读式 (4) 的谱选择规则，弄清作者如何把这些分量组合成计算绕数需要的 $Q$。",
+    "next": {"point": "式 (4) 的谱选择规则", "where": {"ids": ["S2.E4"], "page": null, "quote": null}}
+   },
+   "highlights": [
+    {"ids": ["S2.SS2.p2"], "page": null, "quote": null, "label": "这一点"},
+    {"ids": ["S2.E4"], "page": null, "quote": null, "label": "式 (4)"}
+   ]
+  }
+ ]
+}

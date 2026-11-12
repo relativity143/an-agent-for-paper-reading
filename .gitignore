@@ -31,3 +31,6 @@ eval_private/
 
 # 地图底图的无损原图（31.7 MB），只留在本机；仓库里用同尺寸的 map-bg-4x.webp
 docs/mockups/concept-map/map-bg-4x.png
+
+# 本机的 Claude Code 配置
+.claude/

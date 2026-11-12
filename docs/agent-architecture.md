@@ -2,7 +2,7 @@
 
 本文规定独立 Agent 的前后端边界，供前端和后端并行开发。设计理念、阅读流程和讲解规则仍以 [README.zh-CN.md](../README.zh-CN.md) 和 [implementation.md](implementation.md) 为准；本文只规定 Agent 阶段的结构、接口和分工。
 
-**状态（2026-11-12）：** 草案，尚未实现。接口有改动时，先改本文，再改代码。
+**状态（2026-11-12）：** 草案。前端的第一个里程碑已用样例数据做出（见 [web/README.md](../web/README.md)），后端尚未接上。接口有改动时，先改本文，再改代码。
 
 ## 1. 分工
 
@@ -48,7 +48,7 @@ M1 不做：地图、讲过的概念记录区、旁问、反馈按钮的完整�
 | `GET /api/health` | 返回服务版本、可用的模型后端和当前选用的后端。 |
 | `POST /api/papers` | 请求体 `{"input": "<arXiv 编号、链接或本地 PDF 路径>"}`。获取并解析论文，返回论文标识、标题、作者和 `source`（`arxiv_html`、`pdf_only` 或 `local_pdf`）。 |
 | `GET /api/papers/<paper>` | 返回论文元数据和主线步骤（来自 `outline.md` 的“主线步骤”；还没有时为 `null`）。 |
-| `GET /api/papers/<paper>/content` | HTML 论文：按原文顺序返回节、段落、公式、图表及其编号。PDF 论文：返回 `{"pdf": "/api/papers/<paper>/pdf"}`。 |
+| `GET /api/papers/<paper>/content` | 返回论文正文，格式见 4.3。PDF 论文不返回 `blocks`，改为返回 `"pdf": "/api/papers/<paper>/pdf"`。 |
 | `GET /api/papers/<paper>/pdf` | 返回 PDF 文件本身。 |
 | `POST /api/papers/<paper>/explain` | 请求一轮讲解，返回 `{"task": "<任务编号>"}`。请求体见 4.1。 |
 | `GET /api/tasks/<任务编号>/events` | 以 Server-Sent Events 推送这一轮的进展：`status`（一句话说明正在做什么）、`result`（讲解对象，见 4.2）、`error`。 |
@@ -109,8 +109,36 @@ M1 不做：地图、讲过的概念记录区、旁问、反馈按钮的完整�
 
 - **必有字段由后端校验。** `intro`、`assumes`、`concepts`、`back_to_text`、`unexpanded`、`progress` 缺一不可，数组可以为空但不能省略；每个概念必须同时有 `in_this_paper` 和 `itself`，`in_this_paper_where` 至少一项。模型输出不合格时，后端重试或返回 `error`，不把残缺的讲解交给前端。这样，讲解规则里“两栏不能省”“先讲在本文中的作用”这类要求由结构保证，不只靠提示词。
 - **位置。** HTML 论文用 `ids`；PDF 论文用 `page`（PDF 页序，从 1 开始）和 `quote`（原文片段），前端在 PDF 文字层里匹配后高亮，匹配不到时只标页码。
-- **导读**（`type` 为 `overview`）另有自己的字段：`question`、`model`、`conclusions`、`foundations`、`route`（主线步骤数组）、`next`。字段细节在实现导读时补进本文。
+- **概念状态。** `assumes` 里的 `status` 取 `known`（读者确认懂了）、`explained`（讲过）、`unsure`（仍不确定）或 `new`（这一轮要补）。`explained_at` 是讲过的位置，没有时为 `null`。
+- **其他字段。** `section` 是这一点所在的节标题，可省略。`where.quote` 只在读者选中原文提问时填写；要在原文里标出这句话时，把同一段文字放进对应 `highlights` 项的 `quote`。
+- **导读**（`type` 为 `overview`）的字段：`title`；`question`（`text`、`where`）；`model`（`summary`，以及 `items` 数组，每项 `label`、`text`、`where`）；`conclusions`（`text`、`where`）；`foundations`（每项 `name`、`note`）；`previously`（在其他论文里补过的基础，每项 `name`、`paper`、`status`，没有时为空数组）；`route`（`steps` 数组，每项 `step`、`name`、`range`，以及可选的 `skim`）；`next`（`text`、`where`）；`highlights`。
+- 完整的例子见 [web/mock/explanations-2610.27436v1.json](../web/mock/explanations-2610.27436v1.json)，一份导读和两轮讲解。
 - 一轮讲解实际显示后，后端按现有规则写 `sentence` 或 `overview` 日志，并把涉及的概念记为 `explained`。前端不直接写日志。
+
+### 4.3 论文正文
+
+```json
+{
+  "paper": "2610.27436v1",
+  "title": "<标题>",
+  "authors": ["<作者>"],
+  "source": "arxiv_html",
+  "source_url": "https://arxiv.org/html/2610.27436v1",
+  "steps": [{"step": 1, "name": "问题与杂质模型", "range": "S1–S2.SS1"}],
+  "blocks": [
+    {"type": "section", "id": "S2.SS1", "title": "II.1 Substitutional impurities", "level": 2},
+    {"type": "paragraph", "id": "S2.SS1.p1", "section": "S2.SS1", "text": "… is given by [33, 3]: ⟨S2.E1⟩ where $v$ and $w$ …"},
+    {"type": "figure", "id": "S2.F1", "section": "S2.SS1", "caption": "Figure 1: …"}
+  ],
+  "equations": {"S2.E1": "\\hat{H}=v\\sum_{m=1}^{N}…"}
+}
+```
+
+- `blocks` 按原文顺序排列，类型为 `section`、`paragraph`、`figure`，以及不属于任何段落的 `equation`。
+- 段落文字与 `paper.json` 相同：行内公式写成 `$...$`，行间公式用 `⟨公式编号⟩` 占位，LaTeX 在 `equations` 里按编号取。
+- `steps` 是 `outline.md` 的主线步骤，还没有时为空数组。
+- 可选的 `license`、`attribution` 用于在页面底部注明来源。
+- 完整的例子见 [web/mock/paper-2610.27436v1.json](../web/mock/paper-2610.27436v1.json)。
 
 ## 5. 约束
 
