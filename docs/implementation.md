@@ -657,3 +657,15 @@ areas:
 - **内容。** HTML 内容采用样例的 `{paper,title,authors,source,source_url,blocks,equations,steps}` 结构，按原文顺序组织节、段落、公式和图表标题。`ar5iv` 来源在对外 `source` 中映射为 `arxiv_html`，真实来源网址保留。图表内容超出现有解析能力时应打开原图核对，不能声称看过图像。PDF 以现有 PDF 接口提供原件；模型输入使用按页抽取的文字，无法可靠抽取时明确报错，不凭标题生成。
 - **运行与配置。** 默认只监听 `127.0.0.1:8765`；使用本机 `PAPERREAD_HOME/config.json` 选择 `claude`、`codex`、`api`。服务不把自由填写的个人背景、身份、源确认话语、本地路径或配置密钥放进模型提示，只带学习领域及概念状态。三种后端共用规则和结构验证；CLI 关闭工具与外部 MCP，API 不提供工具执行入口。
 - **待前端对接。** 调用上述显示回执；PDF 路径响应分支由前端显示 PDF；图表图片、完整 PDF 文字层高亮以及真实模型阅读质量需另行联调，后端离线测试不能替代这些验收。
+
+## 22. M1 双击启动、设置、论文列表与 PDF 上传（2026-11-15）
+
+按 [启动交接任务](gpt-m1-launch-handoff.md) 和架构第 4.5 节实现，五项均已完成代码与离线测试。具体对接、验收证据和限制见 [本轮交付说明](m1-launch-delivery.md)。
+
+1. 根目录新增可执行 `start.command`，定位 Python 3.10+，固定使用默认读者目录。已有服务复用，其他程序占端口时换空闲端口；仅前台运行，处理关窗、Ctrl+C、停止信号，取消所属 CLI 进程及排队任务。
+2. 新增 GET/PUT settings。只有 backend 可写，禁止额外字段；可用性不足返回 400，生成中返回 409。保存时保留密钥及未知扩展字段，先验证再原子替换；下一轮立即使用新后端，health 同步更新，不主动检查登录。
+3. 新增 GET papers。只读本机缓存，不联网、不升级缓存；损坏条目和逃逸链接跳过。按显示时间排序，旧记录从已确认显示对应的日志补读时间，不改历史。重复显示回执只刷新 `last_read`，既有日志去重和概念状态规则保持不变。
+4. 服务生成并持久化 `asked`，模型无法覆盖，也不看到该服务字段的结构要求。首次 ask 先导读、后回答；导读的 asked 为 null。旧对象读回补 null，不回写迁移。
+5. 新增 raw PDF 上传，50 MiB、严格文件头、分块接收和异常清理，同源检查与原有 JSON 上限保留。清除客户端文件名中的路径，沿用本地 PDF 缓存；本地 PDF 的 `source_url` 对外和模型输入均改为 null。
+
+未修改 Claude 的 `web/` 或架构文档。`Application` 原构造参数、`backend_info`、`backend.generate(prompt,schema)`、`create_server` 和 `BackendError` 均兼容；仅新增可选 `config`、可选 `close(wait=...)`、`wait_closed()` 及接口方法。`fixture_server.py` 无须为既有联调用法更改这些调用；新设置面板的 fixture 场景可由 Claude 按需要添加。

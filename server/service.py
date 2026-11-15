@@ -1,5 +1,5 @@
 """Reading tasks and persistence, shared by all model transports."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait as wait_futures
 from dataclasses import dataclass, field
 import copy
 import importlib.util
@@ -13,9 +13,13 @@ import tempfile
 import threading
 import uuid
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 from . import __version__
-from .backends import BackendError
+from .backends import BackendError, create_backend, backend_summary
+from .config import load_config
+from .settings import public_settings, prepare_backend_change
+from .catalog import paper_catalog
 from .schema import explanation_schema, validate_explanation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +30,26 @@ sys.modules[spec.name] = core
 spec.loader.exec_module(core)
 MAX_PAPER_CHARS = 160_000
 MAX_PROMPT_CHARS = 260_000
+
+
+def public_source_url(data):
+    """A local import's filesystem URI is private, including in model inputs."""
+    value = data.get("source_url")
+    if data.get("source") == "local_pdf" or not isinstance(value, str):
+        return None
+    try:
+        url = urlsplit(value)
+        if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password:
+            return None
+    except ValueError:
+        return None
+    return value
+
+
+def presented_explanation(value):
+    value = copy.deepcopy(value)
+    value.setdefault("asked", None)
+    return value
 
 
 @dataclass
@@ -106,23 +130,59 @@ def extract_pdf(path):
 
 
 class Application:
-    def __init__(self, store, backend, *, backend_info=None, workers=2):
+    def __init__(self, store, backend, *, backend_info=None, workers=2, config=None):
         self.store = store
         self.backend = backend
         self.backend_info = backend_info or {"backend": "test", "backends": []}
+        self.config = config
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="paperread")
         self.tasks = {}
         self.active = {}
         self.lock = threading.RLock()
         self.closed = False
+        self.futures = set()
 
-    def close(self):
+    def close(self, wait=True):
         with self.lock:
             self.closed = True
-        self.pool.shutdown(wait=True, cancel_futures=False)
+            close = getattr(self.backend, "close", None)
+        if close is not None:
+            close()
+        self.pool.shutdown(wait=wait, cancel_futures=True)
+
+    def wait_closed(self, timeout):
+        with self.lock:
+            pending = tuple(self.futures)
+        return not wait_futures(pending, timeout=timeout).not_done
 
     def health(self):
-        return {"version": __version__, **self.backend_info}
+        with self.lock:
+            return {"version": __version__, **copy.deepcopy(self.backend_info)}
+
+    def settings(self):
+        with self.lock:
+            config = load_config(self.store.home)
+            selected = self.config.backend if self.config is not None else self.backend_info.get("backend")
+            return public_settings(config, selected=selected)
+
+    def update_settings(self, body):
+        if not isinstance(body, dict) or set(body) != {"backend"} or not isinstance(body["backend"], str):
+            raise ValueError("设置只接受 backend，不能提交密钥或其他字段。")
+        with self.lock:
+            if self.closed:
+                raise RuntimeError("服务正在关闭。")
+            if any(not future.done() for future in self.futures):
+                raise RuntimeError("有讲解正在生成，请完成后再切换模型后端。")
+            with prepare_backend_change(self.store.home, body["backend"]) as config:
+                backend = create_backend(config)
+                info = backend_summary(config)
+                info["backend"] = info.pop("selected")
+                response = public_settings(config)
+            self.backend, self.config, self.backend_info = backend, config, info
+            return response
+
+    def list_papers(self):
+        return paper_catalog(self.store)
 
     def _load(self, paper):
         try:
@@ -139,11 +199,41 @@ class Application:
             raise ValueError("论文获取失败，请检查编号、网络或 PDF 文件。") from error
         return self.metadata(result["paper"])
 
+    def import_uploaded_pdf(self, path, filename=None):
+        path = Path(path)
+        if filename is not None and (not isinstance(filename, str) or len(filename) > 255):
+            raise ValueError("PDF 文件名过长或格式不正确。")
+        name = (filename or "paper.pdf").replace("\\", "/").rsplit("/", 1)[-1]
+        if any(ord(character) < 32 or ord(character) == 127 for character in name):
+            raise ValueError("PDF 文件名不能包含控制字符。")
+        stem = re.sub(r"[^\w.\-]+", "-", Path(name).stem).strip(".-")[:100] or "paper"
+        try:
+            if path.is_symlink() or not path.is_file():
+                raise ValueError("上传的 PDF 临时文件不可用。")
+            with path.open("rb") as source:
+                if source.read(5) != b"%PDF-":
+                    raise ValueError("上传内容不是 PDF。")
+            # A sanitized basename retains the existing local-PDF cache identity.
+            # All copies stream through files; no PDF-sized bytes object is built.
+            with tempfile.TemporaryDirectory(prefix="paperread-upload-import-") as temporary:
+                named = Path(temporary) / (stem + ".pdf")
+                shutil.copyfile(path, named)
+                result = self.store.import_pdf(named)
+            if not result["cached"]:
+                cached = self.store.resolve(result["paper"])
+                with core.file_lock(cached / ".fetch.lock"):
+                    data = core.read_json(cached / "paper.json")
+                    data["source_url"] = None
+                    core.write_json(cached / "paper.json", data)
+            return self.metadata(result["paper"])
+        except (core.PaperError, OSError) as error:
+            raise ValueError("PDF 导入失败，请检查文件和本机存储空间。") from error
+
     def metadata(self, paper):
         path, data = self._load(paper)
         return {"paper": path.name, "title": data.get("title", ""), "authors": data.get("authors", []),
                 "source": "arxiv_html" if data.get("source") == "ar5iv" else data.get("source"),
-                "source_url": data.get("source_url"), "steps": outline_steps(path / "outline.md")}
+                "source_url": public_source_url(data), "steps": outline_steps(path / "outline.md")}
 
     def content(self, paper):
         path, data = self._load(paper)
@@ -188,7 +278,7 @@ class Application:
     def history(self, paper):
         path, _ = self._load(paper)
         with core.file_lock(path / ".agent.lock"):
-            return copy.deepcopy(self._state(path)["explanations"])
+            return [presented_explanation(item) for item in self._state(path)["explanations"]]
 
     def _request(self, request, data):
         if not isinstance(request, dict) or request.get("mode") not in {"continue", "ask"}:
@@ -235,8 +325,18 @@ class Application:
             task = Task(path.name)
             self.tasks[task.id] = task
             self.active[path.name] = task.id
-            self.pool.submit(self._generate, task, path, data, request)
+            future = self.pool.submit(self._generate, task, path, data, request)
+            self.futures.add(future)
+            future.add_done_callback(lambda completed: self._forget_future(completed, task))
             return task.id
+
+    def _forget_future(self, future, task):
+        with self.lock:
+            self.futures.discard(future)
+            if future.cancelled():
+                if self.active.get(task.paper) == task.id:
+                    self.active.pop(task.paper, None)
+                task.emit("error", "服务正在关闭，本轮已取消。")
 
     def get_task(self, identifier):
         with self.lock:
@@ -284,8 +384,9 @@ class Application:
                   if key in record} for record in logs]
         context = {"paper": path.name, "type": kind, "request": request,
                    "learning_state": learning, "legacy_reading_records": prior,
-                   "previous_explanations": state["explanations"][-6:],
-                   "outline_steps": outline_steps(path / "outline.md"), "source_url": data.get("source_url"),
+                   "previous_explanations": [{k: v for k, v in item.items() if k != "asked"}
+                                             for item in state["explanations"][-6:]],
+                   "outline_steps": outline_steps(path / "outline.md"), "source_url": public_source_url(data),
                    "references": data.get("references", []), "pdf_pages": pages, "paper_text": text}
         rules = (SKILL / "references" / "explain-rules.md").read_text(encoding="utf-8")
         template = (SKILL / "references" / "output-template.md").read_text(encoding="utf-8").split("## 第一部分回顾")[0]
@@ -306,14 +407,20 @@ overview 使用已有 outline_steps 的名称、编号和范围；尚无主线�
 
     def _generate(self, task, path, data, request):
         try:
-            with core.file_lock(path / ".agent.lock"):
+            with self.lock:
+                if self.closed:
+                    raise ValueError("服务正在关闭，本轮已取消。")
+                backend = self.backend
+            with core.file_lock(path / ".agent.lock"), self.lock:
+                if self.closed:
+                    raise ValueError("服务正在关闭，本轮已取消。")
                 state = self._state(path)
                 if state["explanations"] and state["explanations"][-1]["id"] not in state["displayed"]:
                     if request["mode"] == "ask":
                         state["pending"] = request
                         core.write_json(path / "agent-state.json", state)
                     task.emit("status", "恢复上一轮讲解，等待页面确认显示。")
-                    task.emit("result", state["explanations"][-1])
+                    task.emit("result", presented_explanation(state["explanations"][-1]))
                     return
                 kind = "point" if state["explanations"] else "overview"
                 effective = request if request["mode"] == "ask" else (state.get("pending") or request)
@@ -330,11 +437,15 @@ overview 使用已有 outline_steps 的名称、编号和范围；尚无主线�
             result = None
             for attempt in range(2):
                 task.emit("status", "生成导读。" if kind == "overview" else "补充基础并对应回原文。")
-                raw = self.backend.generate(prompt, explanation_schema(kind))
+                with self.lock:
+                    if self.closed:
+                        raise ValueError("服务正在关闭，本轮已取消。")
+                raw = backend.generate(prompt, explanation_schema(kind))
                 try:
                     if not isinstance(raw, dict):
                         raise ValueError("输出必须是对象。")
                     value = dict(raw, id=uuid.uuid4().hex, paper=path.name)
+                    value.pop("asked", None)
                     if value.get("type") != kind:
                         raise ValueError("讲解类型不符。")
                     result = validate_explanation(value, paper=path.name, valid_ids=source_ids(data), pdf=pages is not None)
@@ -346,7 +457,11 @@ overview 使用已有 outline_steps 的名称、编号和范围；尚无主线�
                     # Validation messages contain field names, never raw model text.
                     prompt += "\n上次输出校验未通过：" + str(error) + "。请按提供的真实材料修正，输出完整对象。"
                     task.emit("status", "讲解结构或定位不完整，正在修正一次。")
-            with core.file_lock(path / ".agent.lock"):
+            result["asked"] = ({name: effective.get(name) for name in ("quote", "question", "where", "page")}
+                               if kind == "point" and effective["mode"] == "ask" else None)
+            with core.file_lock(path / ".agent.lock"), self.lock:
+                if self.closed:
+                    raise ValueError("服务正在关闭，本轮已取消。")
                 latest = self._state(path)
                 latest["explanations"].append(result)
                 if kind == "point":
@@ -435,6 +550,8 @@ overview 使用已有 outline_steps 的名称、编号和范围；尚无主线�
             if value is None:
                 raise FileNotFoundError("讲解不存在。")
             if identifier in state["displayed"]:
+                state["last_read"] = core.now()
+                core.write_json(path / "agent-state.json", state)
                 return {"id": identifier, "displayed": True}
             point = value["type"] == "point"
             location = value.get("where", {})
@@ -453,5 +570,6 @@ overview 使用已有 outline_steps 的名称、编号和范围；尚无主线�
                 self.store.update_profile("mark", SimpleNamespace(concept=concept, status="explained",
                                           source=None, paper=path.name, where=where))
             state["displayed"].append(identifier)
+            state["last_read"] = core.now()
             core.write_json(path / "agent-state.json", state)
         return {"id": identifier, "displayed": True}

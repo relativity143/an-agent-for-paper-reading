@@ -7,12 +7,15 @@ import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import re
 import shutil
 import socket
 import stat
+import tempfile
 from urllib.parse import unquote, urlsplit
 
 MAX_BODY_BYTES = 1024 * 1024
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SOCKET_TIMEOUT = 10
 _STATIC_TYPES = {
     ".html", ".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".jpeg",
@@ -116,7 +119,7 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 if parsed.scheme != "http" or parsed.netloc != host:
                     raise _HTTPFailure(403, "Only same-origin requests are accepted.")
 
-        def _body_length(self):
+        def _body_length(self, *, limit=MAX_BODY_BYTES, content_type="application/json", type_status=415):
             if self._single_header("Transfer-Encoding") is not None:
                 raise _HTTPFailure(400, "Transfer-Encoding is not supported.")
             length = self._single_header("Content-Length")
@@ -125,17 +128,41 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             if not length.isascii() or not length.isdigit() or len(length) > 12:
                 raise _HTTPFailure(400, "Invalid Content-Length.")
             size = int(length)
-            if size > MAX_BODY_BYTES:
+            if size > limit:
                 raise _HTTPFailure(413, "The request is too large.")
-            content_type = self._single_header("Content-Type") or ""
-            if content_type.split(";", 1)[0].strip().lower() != "application/json":
-                raise _HTTPFailure(415, "Use application/json.")
+            received_type = self._single_header("Content-Type") or ""
+            if received_type.split(";", 1)[0].strip().lower() != content_type:
+                raise _HTTPFailure(type_status, f"Use {content_type}.")
             return size
+
+        def _upload_headers(self):
+            length = self._body_length(limit=MAX_UPLOAD_BYTES, content_type="application/pdf", type_status=400)
+            if length < 5:
+                raise _HTTPFailure(400, "A PDF file is required.")
+            filename = self._single_header("X-Paper-Name")
+            if filename is not None:
+                try:
+                    if re.search(r"%(?![0-9A-Fa-f]{2})", filename):
+                        raise ValueError()
+                    filename = unquote(filename, encoding="utf-8", errors="strict")
+                except (UnicodeError, ValueError):
+                    raise _HTTPFailure(400, "Invalid PDF filename.") from None
+                if any(ord(character) < 32 or ord(character) == 127 for character in filename):
+                    raise _HTTPFailure(400, "Invalid PDF filename.")
+                # Browsers may include Unix or Windows paths. Only retain the name.
+                filename = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+                if filename in {"", ".", ".."}:
+                    raise _HTTPFailure(400, "Invalid PDF filename.")
+            return length, filename
 
         def handle_expect_100(self):
             try:
                 self._check_origin()
-                self._body_length()
+                _, parts = self._path()
+                if self.command == "POST" and parts == ["api", "papers", "upload"]:
+                    self._upload_headers()
+                else:
+                    self._body_length()
             except _HTTPFailure as error:
                 self._error(error.status, error.message)
                 return False
@@ -155,6 +182,27 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             if not isinstance(value, dict):
                 raise _HTTPFailure(400, "The JSON body must be an object.")
             return value
+
+        def _upload_pdf(self):
+            length, filename = self._upload_headers()
+            with tempfile.TemporaryDirectory(prefix="paperread-upload-") as temporary:
+                source = Path(temporary) / "source.pdf"
+                with source.open("wb") as target:
+                    header = self.rfile.read(5)
+                    if len(header) != 5:
+                        raise _HTTPFailure(400, "Incomplete request body.")
+                    if header != b"%PDF-":
+                        raise _HTTPFailure(400, "A PDF file is required.")
+                    target.write(header)
+                    remaining = length - len(header)
+                    while remaining:
+                        chunk = self.rfile.read(min(64 * 1024, remaining))
+                        if not chunk:
+                            raise _HTTPFailure(400, "Incomplete request body.")
+                        target.write(chunk)
+                        remaining -= len(chunk)
+                metadata = app.import_uploaded_pdf(source, filename)
+            self._json(200, metadata)
 
         def _path(self):
             if not self.path.startswith("/") or self.path.startswith("//"):
@@ -248,9 +296,17 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             self._check_origin()
             path, parts = self._path()
             method = self.command
-            if method not in {"GET", "HEAD", "POST"}:
+            if method not in {"GET", "HEAD", "POST", "PUT"}:
                 raise _HTTPFailure(405, "Method not allowed.")
+            if method == "PUT":
+                if parts != ["api", "settings"]:
+                    raise _HTTPFailure(405, "Method not allowed.")
+                self._json(200, app.update_settings(self._read_json()))
+                return
             if method == "POST":
+                if parts == ["api", "papers", "upload"]:
+                    self._upload_pdf()
+                    return
                 body = self._read_json()
                 if parts == ["api", "papers"]:
                     source = body.get("input")
@@ -265,6 +321,12 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                     self._json(200, app.acknowledge(parts[2], parts[4]))
                     return
                 raise FileNotFoundError()
+            if parts == ["api", "settings"]:
+                self._json(200, app.settings())
+                return
+            if parts == ["api", "papers"]:
+                self._json(200, app.list_papers())
+                return
             if parts == ["api", "health"]:
                 self._json(200, app.health())
                 return

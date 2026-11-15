@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 import ipaddress
 import json
+import math
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -44,8 +45,10 @@ def is_loopback_url(value: str) -> bool:
         return False
 
 
-def _object(value: object, fields: set[str], label: str) -> dict:
-    if not isinstance(value, dict) or set(value) - fields:
+def _object(value: object, label: str) -> dict:
+    # Reader-added fields are allowed in local configuration. Known fields are
+    # still validated below; writers must preserve the original JSON object.
+    if not isinstance(value, dict):
         raise ConfigError(f"Invalid {label} configuration fields.")
     return value
 
@@ -59,7 +62,7 @@ def _string(value: object, label: str, *, allow_empty: bool = False) -> str:
 
 
 def _cli(raw: object, name: str) -> CLIConfig:
-    data = _object(raw, {"executable", "model"}, name)
+    data = _object(raw, name)
     executable = _string(data.get("executable", name), "CLI executable")
     model = data.get("model")
     if model is not None:
@@ -68,7 +71,7 @@ def _cli(raw: object, name: str) -> CLIConfig:
 
 
 def _api(raw: object) -> APIConfig:
-    data = _object(raw, {"base_url", "model", "api_key", "response_format"}, "API")
+    data = _object(raw, "API")
     values = {
         key: _string(data.get(key, ""), "API " + key, allow_empty=True)
         for key in ("base_url", "model", "api_key")
@@ -97,25 +100,46 @@ def _api(raw: object) -> APIConfig:
     return APIConfig(**{**values, "base_url": base_url}, response_format=response_format)
 
 
-def load_config(home: Path) -> Config:
-    """Read only ``home/config.json``; missing files select Claude with defaults.
-
-    ``home`` is resolved by the application from PAPERREAD_HOME (or ~/.paperread).
-    Credentials are never fetched from a browser, request body, or environment.
-    """
+def read_config(home: Path) -> dict:
+    """Read the original JSON object, including reader-added fields; never write."""
     home = Path(home).expanduser().resolve()
+
+    def reject_constant(_value):
+        raise ValueError("Non-finite JSON number")
+
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("Non-finite JSON number")
+        return number
+
+    def unique_object(pairs):
+        data = {}
+        for key, value in pairs:
+            if key in data:
+                raise ValueError("Duplicate JSON key")
+            data[key] = value
+        return data
+
     try:
         path = home / "config.json"
         with path.open("rb") as handle:
             encoded = handle.read(65_537)
         if len(encoded) > 65_536:
             raise ConfigError("Configuration file is too large.")
-        raw = json.loads(encoded)
+        raw = json.loads(encoded, parse_constant=reject_constant, parse_float=finite_float,
+                         object_pairs_hook=unique_object)
     except FileNotFoundError:
-        return Config(home=home)
+        return {}
     except (OSError, ValueError, UnicodeError, RecursionError):
         raise ConfigError("Cannot read a valid local config.json file.") from None
-    raw = _object(raw, {"backend", "timeout_seconds", "max_retries", "claude", "codex", "api"}, "model")
+    return _object(raw, "model")
+
+
+def config_from_data(home: Path, raw: dict) -> Config:
+    """Validate known fields without discarding or acting on reader-added data."""
+    home = Path(home).expanduser().resolve()
+    raw = _object(raw, "model")
     backend = raw.get("backend", "claude")
     if backend not in ("claude", "codex", "api"):
         raise ConfigError("backend must be claude, codex, or api.")
@@ -134,3 +158,12 @@ def load_config(home: Path) -> Config:
         codex=_cli(raw.get("codex", {}), "codex"),
         api=_api(raw.get("api", {})),
     )
+
+
+def load_config(home: Path) -> Config:
+    """Read only ``home/config.json``; missing files select Claude with defaults.
+
+    ``home`` is resolved by the application from PAPERREAD_HOME (or ~/.paperread).
+    Credentials are never fetched from a browser, request body, or environment.
+    """
+    return config_from_data(home, read_config(home))

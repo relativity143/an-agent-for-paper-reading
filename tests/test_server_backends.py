@@ -54,9 +54,9 @@ class ConfigTests(unittest.TestCase):
 
     def test_invalid_config_values_never_echo_values(self):
         invalid = [
-            {"backend": SECRET}, {"backend": []}, {"extra": SECRET},
+            {"backend": SECRET}, {"backend": []},
             {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": float("nan")},
-            {"max_retries": 3}, {"max_retries": True}, {"claude": {"args": [SECRET]}},
+            {"max_retries": 3}, {"max_retries": True}, {"claude": {"executable": [SECRET]}},
             {"api": {"base_url": "https://user:" + SECRET + "@example.org"}},
             {"api": {"base_url": "http://example.org/v1"}},
             {"api": {"base_url": "https://example.org/?key=" + SECRET}},

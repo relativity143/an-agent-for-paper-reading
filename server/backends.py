@@ -11,8 +11,10 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 from urllib import error, request
 
@@ -20,6 +22,10 @@ from .config import Config, is_loopback_url
 
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROMPT_BYTES = 2 * 1024 * 1024
+
+# The global runner keeps its four-argument testing interface. Ownership is
+# scoped to the calling worker, so closing one application cannot stop another.
+_CLI_CONTEXT = threading.local()
 
 # Preserve login and ordinary connectivity settings, not runtime preload hooks,
 # parent-agent session identifiers, or arbitrary application secrets.
@@ -103,18 +109,22 @@ def _run_cli(command: list[str], prompt: str, cwd: Path, timeout: float) -> byte
         # Windows requires a Job Object for reliable descendant cleanup.
         raise BackendError("CLI backends currently require macOS or Linux; use the API backend on Windows.")
     process = None
+    owner = getattr(_CLI_CONTEXT, "owner", None)
     try:
         # Files keep both the prompt off argv and response memory bounded.
         with tempfile.TemporaryFile() as stdin, tempfile.TemporaryFile() as stdout:
             stdin.write(prompt.encode("utf-8"))
             stdin.seek(0)
-            process = subprocess.Popen(
+            spawn = owner._start_process if owner is not None else subprocess.Popen
+            process = spawn(
                 command, stdin=stdin, stdout=stdout, stderr=subprocess.DEVNULL,
                 cwd=cwd, shell=False, start_new_session=True,
                 env={key: value for key, value in os.environ.items() if key in _CLI_ENV_KEYS},
             )
             deadline = time.monotonic() + timeout
             while True:
+                if owner is not None and owner.cancelled.is_set():
+                    raise BackendError("The model request was cancelled.")
                 if os.fstat(stdout.fileno()).st_size > MAX_OUTPUT_BYTES:
                     raise BackendError("The CLI response exceeded the output limit.")
                 remaining = deadline - time.monotonic()
@@ -137,7 +147,10 @@ def _run_cli(command: list[str], prompt: str, cwd: Path, timeout: float) -> byte
     finally:
         if process is not None:
             try:
-                _stop_process_group(process)
+                if owner is None:
+                    _stop_process_group(process)
+                else:
+                    owner._finish_process(process)
             except (OSError, subprocess.SubprocessError):
                 raise BackendError("Cannot finish cleaning up the model CLI processes.") from None
 
@@ -147,9 +160,50 @@ class CLIBackend:
         self.config = config
         self.name = name
         self.settings = getattr(config, name)
+        self.cancelled = threading.Event()
+        self._process_lock = threading.Lock()
+        self._processes = set()
+
+    def _start_process(self, *args, **kwargs):
+        # Registration and closing share a lock: shutdown cannot miss a process
+        # that is between its cancellation check and Popen.
+        with self._process_lock:
+            if self.cancelled.is_set():
+                raise BackendError("The model request was cancelled.")
+            process = subprocess.Popen(*args, **kwargs)
+            self._processes.add(process)
+            return process
+
+    def _finish_process(self, process):
+        with self._process_lock:
+            if process not in self._processes:
+                return
+            try:
+                _stop_process_group(process)
+            finally:
+                self._processes.discard(process)
+
+    def close(self):
+        with self._process_lock:
+            self.cancelled.set()
+            processes = tuple(self._processes)
+        for process in processes:
+            self._finish_process(process)
+
+    def _run_cli(self, command, prompt, cwd, timeout):
+        previous = getattr(_CLI_CONTEXT, "owner", None)
+        _CLI_CONTEXT.owner = self
+        try:
+            if self.cancelled.is_set():
+                raise BackendError("The model request was cancelled.")
+            return _run_cli(command, prompt, cwd, timeout)
+        finally:
+            _CLI_CONTEXT.owner = previous
 
     def generate(self, prompt: str, schema: dict) -> dict:
         _check_input(prompt, schema)
+        if self.cancelled.is_set():
+            raise BackendError("The model request was cancelled.")
         executable = shutil.which(self.settings.executable)
         if not executable:
             raise BackendError("The selected model CLI is not installed.")
@@ -163,7 +217,7 @@ class CLIBackend:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
                         raise BackendError("The model request timed out.")
-                    return _run_cli([executable, *arguments], "", cwd, min(10, remaining))
+                    return self._run_cli([executable, *arguments], "", cwd, min(10, remaining))
                 if self.name == "claude":
                     help_text = probe(["--help"])
                     required = (b"--tools", b"--safe-mode", b"--strict-mcp-config", b"--json-schema",
@@ -194,7 +248,7 @@ class CLIBackend:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise BackendError("The model request timed out.")
-                output = _run_cli(command, prompt, cwd, remaining)
+                output = self._run_cli(command, prompt, cwd, remaining)
                 return self._parse_output(output)
         except OSError:
             raise BackendError("Cannot prepare the temporary model workspace.") from None
@@ -284,9 +338,29 @@ class APIBackend:
         self.config = config
         self.settings = config.api
         self.opener = request.build_opener(_NoRedirect())
+        self.cancelled = threading.Event()
+        self._response_lock = threading.Lock()
+        self._responses = set()
+
+    def close(self):
+        self.cancelled.set()
+        with self._response_lock:
+            responses = tuple(self._responses)
+        for response in responses:
+            raw = getattr(getattr(response, "fp", None), "raw", None)
+            sock = getattr(raw, "_sock", None)
+            if sock is not None:
+                try:
+                    # Unblock the worker before it closes the buffered reader.
+                    # Calling response.close() here could wait on its read lock.
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
 
     def generate(self, prompt: str, schema: dict) -> dict:
         _check_input(prompt, schema)
+        if self.cancelled.is_set():
+            raise BackendError("The model request was cancelled.")
         settings = self.settings
         if not settings.base_url or not settings.model or not (settings.api_key or is_loopback_url(settings.base_url)):
             raise BackendError("Configure the API base_url, model and api_key in local config.json.")
@@ -309,12 +383,24 @@ class APIBackend:
         req = request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         deadline = time.monotonic() + self.config.timeout_seconds
         for attempt in range(self.config.max_retries + 1):
+            if self.cancelled.is_set():
+                raise BackendError("The model request was cancelled.")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise BackendError("The model request timed out.")
             try:
                 with self.opener.open(req, timeout=remaining) as response:
-                    output = self._read_response(response, deadline)
+                    with self._response_lock:
+                        if self.cancelled.is_set():
+                            raise BackendError("The model request was cancelled.")
+                        self._responses.add(response)
+                    try:
+                        output = self._read_response(response, deadline)
+                    finally:
+                        with self._response_lock:
+                            self._responses.discard(response)
+                if self.cancelled.is_set():
+                    raise BackendError("The model request was cancelled.")
                 return self._parse_response(_json_object(output))
             except error.HTTPError as exc:
                 code = exc.code

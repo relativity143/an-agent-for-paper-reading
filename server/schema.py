@@ -258,7 +258,11 @@ def validate_explanation(value, *, paper=None, valid_ids=None, pdf=False) -> dic
         schema["required"].remove("section")
     else:
         schema["properties"]["route"]["required"].remove("skim")
-    schema["properties"].update({"id": _text(), "paper": _text()})
+    asked = _object({name: _text(nullable=True) for name in ("quote", "question", "where")})
+    asked["properties"]["page"] = {"type": ["integer", "null"], "minimum": 1}
+    asked["required"].append("page")
+    asked["type"] = ["object", "null"]
+    schema["properties"].update({"id": _text(), "paper": _text(), "asked": asked})
     _check_shape(value, schema, "explanation")
     if paper is not None and "paper" in value and value["paper"] != paper:
         _fail("explanation.paper", "does not match the requested paper")
