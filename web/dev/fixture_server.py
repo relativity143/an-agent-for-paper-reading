@@ -150,6 +150,25 @@ class ScriptedBackend:
     def __init__(self, scripts, delay=0.0):
         self.scripts = scripts
         self.delay = delay
+        self.last_point = {}  # 论文编号 → 上一份逐点讲解的输出，“还是不懂”之后重讲时用
+
+    @staticmethod
+    def material(prompt):
+        """提示末尾的“本轮材料”（JSON）。读不出来时返回空字典。"""
+        try:
+            return json.loads(prompt.split("本轮材料（JSON 数据）：\n", 1)[1])
+        except (IndexError, ValueError):
+            return {}
+
+    @staticmethod
+    def follow_record(output, record):
+        """让输出里 assumes 的状态和读者的概念记录一致（接口约定 4.7 节），和真实模型该做的一样。"""
+        known = {item["name"].strip().lower(): item for item in (record or {}).get("concepts", [])}
+        for assume in output.get("assumes", []):
+            entry = known.get(str(assume.get("concept", "")).strip().lower())
+            assume["status"] = entry["status"] if entry else "new"
+            assume["explained_at"] = entry["where"] if entry else None
+        return output
 
     def generate(self, prompt, schema):
         # 真实模型一轮要一两分钟。加上等待，才能看到“生成中”时页面的样子。
@@ -164,14 +183,25 @@ class ScriptedBackend:
             time.sleep(0.1)
         # 只认“本轮材料”开头的那一个论文编号：阅读记录里也会出现别的论文的编号。
         current = re.search(r'本轮材料[^\n]*\n\{"paper": "([^"]+)"', prompt)
+        material = self.material(prompt)
         for paper, queue in self.scripts.items():
             if current and current.group(1) == paper:
+                repeat = material.get("repeat_point")
+                if repeat and paper in self.last_point:
+                    # 读者说“还是不懂”：不取下一份固定输出，把上一点在原位置再讲一遍。
+                    again = copy.deepcopy(self.last_point[paper])
+                    again["point"] = f"{again.get('point', '')}（换一种讲法）"
+                    again["intro"] = f"固定样例：这是同一点的第二种讲法。{again.get('intro', '')}"
+                    return self.follow_record(again, material.get("concept_record"))
                 if not queue:
                     raise RuntimeError("固定样例已经用完。")
                 item = queue.pop(0)
                 if isinstance(item, Exception):
                     raise item
-                return copy.deepcopy(item)
+                output = copy.deepcopy(item)
+                if output.get("type") == "point":
+                    self.last_point[paper] = copy.deepcopy(output)
+                return self.follow_record(output, material.get("concept_record"))
         raise RuntimeError("固定样例里没有这篇论文。")
 
 

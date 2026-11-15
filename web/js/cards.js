@@ -3,11 +3,12 @@
 
 import { renderInline, renderBlocks, typeset, escapeHtml } from './rich.js';
 
+// 和概念记录里的说法一致（record.js）：已经会、讲过、还不懂；记录里没有的是这一轮要补的。
 const STATUS_LABEL = {
-  known: '你确认懂了',
+  known: '已经会',
   explained: '讲过',
-  unsure: '仍不确定',
-  new: '本轮基础',
+  unsure: '还不懂',
+  new: '这一轮补',
 };
 
 // PDF 论文里，位置写成“PDF 第 2 页”“page 2”“p. 2”这样的文字。

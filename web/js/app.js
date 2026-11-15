@@ -325,6 +325,14 @@ function describeFailure(error) {
       action: recoverActions(),
     };
   }
+  if (error.kind === 'http' && error.status === 409 && /记录/.test(error.message || '') && record.supported()) {
+    // 请求带的记录版本和后端的对不上：记录在别处（另一个标签页）改过。读到最新的，让读者再确认一次。
+    record.reconfirm();
+    return {
+      message: '概念记录在别处改过了，这一轮没有开始。上面已经摆出最新的记录，看过并确认后再点“继续”。',
+      action: null,
+    };
+  }
   if (error.kind === 'http' && error.status === 409) {
     return {
       message: `${error.message || '已有一轮讲解正在生成。'}这不是论文的问题，稍等一下再点“恢复”。`,

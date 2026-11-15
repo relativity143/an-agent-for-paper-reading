@@ -321,6 +321,8 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
 
   return {
     load,
+    // 记录在别处改过：重新读取，不是空的就再让读者确认一次。
+    reconfirm: load,
     refresh,
     supported,
     ready: () => !supported() || confirmed,
