@@ -101,6 +101,7 @@ class APIBackendTests(unittest.TestCase):
         self.assertEqual(req.full_url, "https://example.org/v1/chat/completions")
         self.assertEqual(req.get_header("Authorization"), "Bearer " + SECRET)
         self.assertEqual(body["response_format"]["json_schema"]["schema"], SCHEMA)
+        self.assertEqual(body["reasoning_effort"], "high")
         self.assertFalse(body["stream"])
         self.assertNotIn("tools", body)
 
@@ -110,6 +111,7 @@ class APIBackendTests(unittest.TestCase):
         self.backend.generate("prompt", SCHEMA)
         body = json.loads(self.backend.opener.open.call_args.args[0].data)
         self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["reasoning_effort"], "high")
         self.assertIn(json.dumps(SCHEMA), body["messages"][0]["content"])
 
     def test_transient_retry_is_bounded_and_errors_are_sanitized(self):
@@ -163,7 +165,7 @@ class CLIBackendTests(unittest.TestCase):
 
     def test_claude_is_tool_free_and_uses_stdin_in_empty_temporary_cwd(self):
         backend = self.backend("claude")
-        help_text = b"--tools --safe-mode --strict-mcp-config --json-schema --disable-slash-commands --no-session-persistence"
+        help_text = b"--tools --safe-mode --strict-mcp-config --json-schema --disable-slash-commands --no-session-persistence --effort"
         observed = []
         def run(command, prompt, cwd, timeout):
             self.assertEqual(list(cwd.iterdir()), [])
@@ -177,6 +179,7 @@ class CLIBackendTests(unittest.TestCase):
         self.assertEqual(command[command.index("--tools") + 1], "")
         self.assertEqual(command[command.index("--mcp-config") + 1], '{"mcpServers":{}}')
         self.assertIn("--safe-mode", command)
+        self.assertEqual(command[command.index("--effort") + 1], "high")
         self.assertNotIn("--setting-sources", command)
         self.assertFalse(cwd.exists())
 
@@ -205,6 +208,7 @@ class CLIBackendTests(unittest.TestCase):
         with mock.patch.object(backends.shutil, "which", return_value="/cli/codex"), mock.patch.object(backends, "_run_cli", side_effect=run):
             self.assertEqual(backend.generate("prompt", SCHEMA), RESULT)
         command = observed[-1]
+        self.assertIn('model_reasoning_effort="high"', command)
         for flag in ("features.shell_tool=false", "features.view_image=false", "features.hooks=false",
                      "features.apps=false", "features.plugins=false", "skills.include_instructions=false", "mcp_servers={}",
                      "features.browser_use=false", "features.computer_use=false", "features.code_mode_host=false"):

@@ -60,6 +60,8 @@ Claude/Codex 的 `model:null` 跟随命令行程序默认值；可选的 `model_
 
 CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相关能力，并限定时间与输出长度；需要支持这些开关的较新版本。CLI 模式当前支持 macOS/Linux，Windows 可用 API 模式。Claude 的安全模式保留本机认证助手和模型设置；Codex 使用忽略用户自定义配置的模式，需要自定义模型服务时可用 API 分支。任务不会把提示或密钥放到命令行参数中；结构 schema 会作为参数或临时文件传入。
 
+**所有模型调用的 effort 固定为 `high`。** Claude Code 显式传入 `--effort high`，Codex 显式覆盖 `model_reasoning_effort="high"`，Chat Completions API 请求固定携带 `reasoning_effort:"high"`（字段见 [OpenAI 推理参数说明](https://developers.openai.com/api/docs/guides/reasoning#reasoning-effort)）。默认模型、自定义模型、切换后端和修正重试均沿用此规则，不增加 effort 选择项。API 提供方或模型须支持此参数，不支持时报告错误，不静默降级。此设置作用于阅读 Agent 的请求；更新代码后重启阅读服务生效。
+
 ## 前端对接
 
 启动、设置、列表与上传接口见 [首轮交付](../docs/m1-launch-delivery.md)；模型名、时限、停止与排队问题恢复见 [第二轮交付](../docs/m1-round2-delivery.md)，供 Claude 继续接页面。

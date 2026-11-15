@@ -24,6 +24,7 @@ from .config import Config, is_loopback_url
 
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROMPT_BYTES = 2 * 1024 * 1024
+FIXED_REASONING_EFFORT = "high"
 
 # Both public generate and the global CLI runner retain their test interfaces.
 _TASK_CONTEXT = threading.local()
@@ -331,9 +332,9 @@ class CLIBackend:
                 if self.name == "claude":
                     help_text = probe(["--help"])
                     required = (b"--tools", b"--safe-mode", b"--strict-mcp-config", b"--json-schema",
-                                b"--disable-slash-commands", b"--no-session-persistence")
+                                b"--disable-slash-commands", b"--no-session-persistence", b"--effort")
                     if not all(flag in help_text for flag in required):
-                        raise BackendError("Claude Code 版本太旧，缺少所需的隔离参数；请更新后重试。")
+                        raise BackendError("Claude Code 版本太旧，缺少所需的隔离或推理强度参数；请更新后重试。")
                     command = self._claude_command(executable, schema)
                 else:
                     help_text = probe(["exec", "--help"])
@@ -373,6 +374,7 @@ class CLIBackend:
             "--tools", "", "--safe-mode", "--disable-slash-commands", "--no-session-persistence",
             "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
             "--permission-mode", "dontAsk", "--no-chrome",
+            "--effort", FIXED_REASONING_EFFORT,
         ]
 
     @staticmethod
@@ -380,6 +382,7 @@ class CLIBackend:
         # read-only alone still permits reading user files. Disable the tool
         # surfaces separately, and ignore customization/rules from user config.
         overrides = {
+            "model_reasoning_effort": json.dumps(FIXED_REASONING_EFFORT),
             "approval_policy": '"never"', "web_search": '"disabled"',
             "features.shell_tool": "false", "features.view_image": "false",
             "features.shell_snapshot": "false", "features.code_mode": "false",
@@ -566,7 +569,8 @@ def _api_failure(code):
     if code in (401, 403):
         return f"API 认证失败或没有访问权限（HTTP {code}），请检查本机配置中的 API 密钥和账号权限。"
     if code in (400, 404, 422):
-        return f"API 请求未被接受（HTTP {code}）；模型名可能不对，请检查本机配置中的模型、API 地址和响应格式。"
+        return (f"API 请求未被接受（HTTP {code}）；模型名可能不对，请检查模型、API 地址、响应格式，"
+                "以及模型是否支持固定的 high reasoning_effort。")
     if code in (408, 504):
         return TIMEOUT_MESSAGE
     if code == 429:
@@ -609,6 +613,7 @@ class APIBackend:
                 {"role": "user", "content": prompt},
             ],
             "response_format": response_format,
+            "reasoning_effort": FIXED_REASONING_EFFORT,
             "stream": False,
         }
         headers = {"Content-Type": "application/json", "Accept": "application/json"}

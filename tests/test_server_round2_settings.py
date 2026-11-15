@@ -169,7 +169,7 @@ class RoundTwoSettingsTests(unittest.TestCase):
         result = {"point": "Offline command contract"}
         schema = {"type": "object", "properties": {"point": {"type": "string"}}, "required": ["point"]}
         help_text = {
-            "claude": b"--tools --safe-mode --strict-mcp-config --json-schema --disable-slash-commands --no-session-persistence",
+            "claude": b"--tools --safe-mode --strict-mcp-config --json-schema --disable-slash-commands --no-session-persistence --effort",
             "codex": b"--ignore-user-config --ignore-rules --ephemeral --output-schema",
         }
         for name, probe_count in (("claude", 1), ("codex", 2)):
@@ -211,6 +211,10 @@ class RoundTwoSettingsTests(unittest.TestCase):
                         self.assertEqual(remaining, 10)
                         self.assertNotIn("--model", command)
                     command, prompt, remaining = observed[-1]
+                    if name == "claude":
+                        self.assertEqual(command[command.index("--effort") + 1], "high")
+                    else:
+                        self.assertIn('model_reasoning_effort="high"', command)
                     self.assertEqual(prompt, "offline prompt")
                     self.assertEqual(remaining, timeout - 3 * probe_count)
                     if model is None:

@@ -94,9 +94,14 @@ class LauncherTests(unittest.TestCase):
 
     def test_reuses_running_service_without_constructing_an_application(self):
         server = self.run_http(HealthApp())
-        with mock.patch("server.__main__.Application", side_effect=AssertionError("No second service")), \
+        with tempfile.TemporaryDirectory(prefix="paperread-legacy-reuse-") as directory, \
+                mock.patch.dict(os.environ, {}), \
+                mock.patch("server.__main__.Path.expanduser", return_value=Path(directory)), \
+                mock.patch("server.__main__.Application", side_effect=AssertionError("No second service")), \
                 mock.patch("server.__main__.open_page") as opened, \
                 contextlib.redirect_stdout(io.StringIO()) as output:
+            # Exercise legacy discovery without reading a real reader's record.
+            os.environ.pop("PAPERREAD_HOME", None)
             self.assertEqual(main(["--port", str(server.server_port), "--open"]), 0)
         opened.assert_called_once_with(f"http://127.0.0.1:{server.server_port}")
         self.assertIn("原来的服务窗口", output.getvalue())
