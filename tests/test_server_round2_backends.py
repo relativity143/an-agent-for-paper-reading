@@ -275,6 +275,25 @@ class RoundTwoBackendTests(unittest.TestCase):
                     self.assertNotIn("/Users/", str(caught.exception))
                     self.assertNotIn("https://", str(caught.exception))
 
+    @unittest.skipUnless(os.name == "posix", "POSIX subprocess group cleanup")
+    def test_model_requiring_newer_codex_is_not_reported_as_login_failure(self):
+        # Actual nonzero CLI path: stderr may contain an unrelated cache warning,
+        # while the provider's terminal message arrives inside a JSONL event.
+        message = ("The 'gpt-6-astra' model requires a newer version of Codex. "
+                   "Please upgrade to the latest app or CLI and try again.")
+        event = {"type": "turn.failed", "error": {"message": message, "private": SECRET}}
+        code = ("import sys,json; "
+                "sys.stderr.write('failed to load models cache\\n'); "
+                f"print(json.dumps({event!r})); sys.exit(1)")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(backends.BackendError) as caught:
+                backends._run_cli([sys.executable, "-c", code], "", Path(directory), 3)
+        text = str(caught.exception)
+        self.assertIn("Codex 命令行版本过旧", text)
+        self.assertIn("跟随默认模型", text)
+        self.assertNotIn("登录", text)
+        self.assertNotIn(SECRET, text)
+
     def test_actionable_api_and_missing_cli_errors(self):
         backend = backends.APIBackend(Config(home=Path("/unused"), backend="api", max_retries=0,
             api=APIConfig("https://example.invalid/v1", "fixture", SECRET)))

@@ -163,6 +163,8 @@ def _cli_failure(output, name="模型命令行程序"):
     if isinstance(output, bytes):
         output = output.decode("utf-8", errors="replace")
     text = str(output)[:65_536].lower()
+    if "requires a newer version of codex" in text:
+        return "当前 Codex 命令行版本过旧，所选模型需要更新版本。请升级 Codex 命令行程序，或暂时选择跟随默认模型。"
     if any(term in text for term in ("invalid model", "model not found", "model_not_found", "unknown model",
                                      "model does not exist", "model is not available", "unsupported model",
                                      "invalid_model", "does not support", "invalid model name")):
