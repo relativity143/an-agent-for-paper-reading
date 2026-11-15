@@ -10,7 +10,7 @@ from unittest.mock import patch
 from server.config import load_config
 from server.schema import explanation_schema, validate_explanation, ValidationError
 from server.service import Application, core
-from test_server_service import FakeBackend, overview, point, PAPER
+from test_server_service import FakeBackend, overview, point, PAPER, reading_request
 
 
 class LaunchServiceTests(unittest.TestCase):
@@ -41,7 +41,7 @@ class LaunchServiceTests(unittest.TestCase):
         self.addCleanup(installed.stop)
 
     def turn(self, request=None):
-        task = self.app.explain(PAPER, request or {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request(request))
         events = [event for event in self.app.task_events(task) if event]
         self.assertTrue(self.app.wait_closed(2))
         self.assertEqual(events[-1][1], "result", events[-1])
@@ -104,7 +104,7 @@ class LaunchServiceTests(unittest.TestCase):
             release.wait(3)
             return overview()
         self.backend.generate = generate
-        task = self.app.explain(PAPER, {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         before = (self.home / "config.json").read_bytes()
         try:
@@ -129,7 +129,7 @@ class LaunchServiceTests(unittest.TestCase):
         third = self.turn()
         self.assertIsNone(third["asked"])
         context = json.loads(self.backend.prompts[-1].split("本轮材料（JSON 数据）：\n", 1)[1])
-        self.assertTrue(all("asked" not in item for item in context["previous_explanations"]))
+        self.assertTrue(all("asked" not in item for item in context["reading_progress"]))
         self.assertNotIn("asked", explanation_schema("point")["properties"])
 
     def test_model_cannot_supply_asked_and_missing_values_are_null(self):
@@ -202,7 +202,8 @@ class LaunchServiceTests(unittest.TestCase):
         (self.path / "paper.pdf").write_bytes(b"%PDF- synthetic text extraction fixture")
         self.assertIsNone(self.app.metadata(PAPER)["source_url"])
         with patch("server.service.extract_pdf", return_value=("[PDF 第 1 页] source text", 1)):
-            prompt, _ = self.app._prompt(self.path, data, {"mode": "continue"}, {"explanations": []}, "overview")
+            prompt, _ = self.app._prompt(self.path, data, {"mode": "continue"}, {"explanations": []}, "overview",
+                                         reading_context="从基础讲起。")
         self.assertNotIn("file:///", prompt)
         self.assertNotIn("/private/reader/", prompt)
 
@@ -219,7 +220,7 @@ class LaunchServiceTests(unittest.TestCase):
 
         with original_lock(self.path / ".agent.lock"):
             with patch.object(core, "file_lock", side_effect=observed_lock):
-                task_id = self.app.explain(PAPER, {"mode": "ask", "question": "A question before shutdown"})
+                task_id = self.app.explain(PAPER, reading_request({"mode": "ask", "question": "A question before shutdown"}))
                 self.assertTrue(waiting.wait(2))
                 before = (self.path / "agent-state.json").read_bytes()
                 self.app.close(wait=False)
@@ -241,9 +242,9 @@ class LaunchServiceTests(unittest.TestCase):
         self.backend.generate = generate
         queued_path = self.home / "papers" / "queued-paper"
         core.write_json(queued_path / "paper.json", self.data)
-        app.explain(PAPER, {"mode": "continue"})
+        app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
-        task_id = app.explain("queued-paper", {"mode": "continue"})
+        task_id = app.explain("queued-paper", reading_request({"mode": "continue"}))
         app.close(wait=False)
         queued = app.get_task(task_id)
         self.assertTrue(queued.done)

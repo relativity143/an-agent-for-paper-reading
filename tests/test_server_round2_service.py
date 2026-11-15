@@ -10,7 +10,7 @@ from server.backends import BackendError
 from server.config import load_config
 from server.service import Application, Task, core
 import test_server_service as fixtures
-from test_server_service import FakeBackend, overview, point, PAPER
+from test_server_service import FakeBackend, overview, point, PAPER, reading_request
 
 
 class RoundTwoServiceTests(unittest.TestCase):
@@ -30,7 +30,7 @@ class RoundTwoServiceTests(unittest.TestCase):
 
     def test_cancel_returns_terminal_error_and_late_result_never_saves(self):
         entered, release = self.blocking_backend()
-        task = self.app.explain(PAPER, {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         self.assertEqual(self.app.cancel_task(task), {"task": task, "cancelled": True})
         events = list(self.app.task_events(task))
@@ -44,7 +44,7 @@ class RoundTwoServiceTests(unittest.TestCase):
 
     def test_cancel_allows_immediate_settings_switch_and_new_task(self):
         entered, release = self.blocking_backend()
-        task = self.app.explain(PAPER, {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         self.app.cancel_task(task)
         replacement = FakeBackend(overview())
@@ -52,7 +52,7 @@ class RoundTwoServiceTests(unittest.TestCase):
                 "server.service.create_backend", return_value=replacement):
             response = self.app.update_settings({"backend": "codex", "model": "valid-model", "timeout_seconds": 450})
         self.assertEqual(response["timeout_seconds"], 450)
-        new_task = self.app.explain(PAPER, {"mode": "continue"})
+        new_task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertNotEqual(task, new_task)
         result = list(self.app.task_events(new_task))[-1]
         self.assertEqual(result[1], "result", result)
@@ -77,7 +77,7 @@ class RoundTwoServiceTests(unittest.TestCase):
 
     def test_cleanup_failure_blocks_switch_and_can_be_retried(self):
         entered, release = self.blocking_backend()
-        identifier = self.app.explain(PAPER, {"mode": "continue"})
+        identifier = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         task = self.app.get_task(identifier)
         calls = []
@@ -94,7 +94,7 @@ class RoundTwoServiceTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.app.update_settings({"backend": "claude"})
         with self.assertRaises(RuntimeError):
-            self.app.explain(PAPER, {"mode": "continue"})
+            self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(self.app.cancel_task(identifier)["cancelled"])
         self.assertFalse(task.cleanup_pending)
         self.assertEqual(len(calls), 2)
@@ -109,7 +109,7 @@ class RoundTwoServiceTests(unittest.TestCase):
             if index == 0:
                 self.app.active[task.paper] = task.id
         entered, release = self.blocking_backend()
-        identifier = self.app.explain(PAPER, {"mode": "continue"})
+        identifier = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         self.assertNotIn("old-0", self.app.active)
         self.assertTrue(all(key in self.app.tasks for key in self.app.active.values()))
@@ -120,7 +120,7 @@ class RoundTwoServiceTests(unittest.TestCase):
 
     def test_natural_cleanup_failure_remains_retryable(self):
         entered, release = self.blocking_backend()
-        task_id = self.app.explain(PAPER, {"mode": "continue"})
+        task_id = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         task = self.app.get_task(task_id)
         stopped = []
@@ -164,8 +164,8 @@ class RoundTwoServiceTests(unittest.TestCase):
             return overview()
         self.backend.generate = generate
         self.addCleanup(release.set)
-        first = self.app.explain(PAPER, {"mode": "continue"})
-        second = self.app.explain(other, {"mode": "continue"})
+        first = self.app.explain(PAPER, reading_request({"mode": "continue"}))
+        second = self.app.explain(other, reading_request({"mode": "continue"}))
         self.assertTrue(two_started.wait(2))
         self.app.cancel_task(first)
         self.assertFalse(self.app.get_task(second).cancellation.is_set())
@@ -182,11 +182,11 @@ class RoundTwoServiceTests(unittest.TestCase):
         self.app = Application(self.store, self.backend, workers=1)
         self.addCleanup(self.app.close)
         entered, release = self.blocking_backend()
-        first = self.app.explain(PAPER, {"mode": "continue"})
+        first = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         other = "2601.00002v1"
         core.write_json(self.home / "papers" / other / "paper.json", core.read_json(self.path / "paper.json"))
-        second = self.app.explain(other, {"mode": "continue"})
+        second = self.app.explain(other, reading_request({"mode": "continue"}))
         self.app.cancel_task(second)
         self.assertTrue(self.app.get_task(second).future.cancelled())
         release.set()
@@ -197,7 +197,7 @@ class RoundTwoServiceTests(unittest.TestCase):
 
     def test_cancel_while_waiting_to_save_discards_valid_result(self):
         entered, release = self.blocking_backend()
-        task = self.app.explain(PAPER, {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         with core.file_lock(self.path / ".agent.lock"):
             release.set()
@@ -214,7 +214,7 @@ class RoundTwoServiceTests(unittest.TestCase):
             raise ValueError("需修正")
         self.addCleanup(release.set)
         with patch("server.service.validate_explanation", side_effect=validate):
-            task = self.app.explain(PAPER, {"mode": "continue"})
+            task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
             self.assertTrue(entered.wait(2))
             self.app.cancel_task(task)
             release.set()
@@ -225,7 +225,7 @@ class RoundTwoServiceTests(unittest.TestCase):
     def test_pending_exposed_on_metadata_survives_cancel_and_clears_on_answer(self):
         question = {"mode": "ask", "where": "S1.p1", "quote": "Original text.", "question": "基础是什么？"}
         entered, release = self.blocking_backend()
-        task = self.app.explain(PAPER, question)
+        task = self.app.explain(PAPER, reading_request(question))
         self.assertTrue(entered.wait(2))
         expected = {k: question.get(k) for k in ("quote", "question", "where", "page")}
         self.assertEqual(self.app.metadata(PAPER)["pending"], expected)
@@ -283,7 +283,7 @@ class RoundTwoHTTPTests(unittest.TestCase):
         self.backend.generate = generate
         self.addCleanup(release.set)
         self.start_http()
-        task = self.app.explain(PAPER, {"mode": "continue"})
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         route = f"/api/tasks/{task}/cancel"
         self.assertEqual(self.request("POST", route, headers={"Origin": "https://foreign.invalid"})[0], 403)

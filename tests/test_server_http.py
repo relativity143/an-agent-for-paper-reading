@@ -121,7 +121,7 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn(field, json.loads(data))
         self.assertIsInstance(json.loads(self.request("GET", "/api/papers/paper-1/explanations")[2]), list)
-        status, _, data = self.post("/api/papers/paper-1/explain", {"mode": "continue"})
+        status, _, data = self.post("/api/papers/paper-1/explain", {"mode": "continue", "reading_context": "从基础讲起。"})
         self.assertEqual((status, json.loads(data)), (202, {"task": "task-1"}))
         self.assertFalse(any(call[0] == "displayed" for call in self.app.calls))
         status, _, data = self.post("/api/papers/paper-1/explanations/explanation-1/displayed", {})

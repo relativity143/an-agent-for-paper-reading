@@ -145,7 +145,7 @@ class UploadIntegrationTests(unittest.TestCase):
         self.assertEqual(saved_metadata["source_sha256"], hashlib.sha256(self.pdf).hexdigest())
 
         with patch("server.service.extract_pdf", return_value=("[PDF 第 1 页]\nSynthetic upload fixture.", 1)) as extract:
-            task = self.json_request("POST", resource + "/explain", {"mode": "continue"}, expected=202)["task"]
+            task = self.json_request("POST", resource + "/explain", {"mode": "continue", "reading_context": "从基础讲起。"}, expected=202)["task"]
             status, headers, stream = self.request("GET", f"/api/tasks/{task}/events")
             self.assertEqual(status, 200)
             self.assertIn("text/event-stream", headers["Content-Type"])

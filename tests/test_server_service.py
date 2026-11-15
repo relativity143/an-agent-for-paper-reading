@@ -14,6 +14,11 @@ PAPER = "2601.00001v1"
 LOCATION = {"ids": ["S1.p1"], "page": None, "quote": None}
 
 
+def reading_request(request=None):
+    """Add current-turn background without changing persisted question fixtures."""
+    return {"reading_context": "从基础讲起。", **({"mode": "continue"} if request is None else request)}
+
+
 def overview():
     return {"type": "overview", "title": "Synthetic paper", "question": {"text": "A question", "where": LOCATION},
             "model": {"summary": "A model", "items": []}, "conclusions": {"text": "Limited result", "where": LOCATION},
@@ -68,7 +73,7 @@ class ServiceTests(unittest.TestCase):
         self.addCleanup(self.app.close)
 
     def run_turn(self, request=None):
-        task_id = self.app.explain(PAPER, request or {"mode": "continue"})
+        task_id = self.app.explain(PAPER, reading_request(request))
         events = [event for event in self.app.task_events(task_id) if event is not None]
         # Wait until the generation worker releases its per-paper active slot.
         with self.app.get_task(task_id).condition:
@@ -112,7 +117,7 @@ class ServiceTests(unittest.TestCase):
         self.app.acknowledge(PAPER, first["id"])
         other = Application(self.store, FakeBackend(point()))
         self.addCleanup(other.close)
-        task = other.explain(PAPER, {"mode": "continue"})
+        task = other.explain(PAPER, reading_request({"mode": "continue"}))
         events = [e for e in other.task_events(task) if e]
         self.assertEqual(events[-1][1], "result")
         self.assertIn('"request": {"mode": "ask", "question": "Why this term?"', other.backend.prompts[0])
@@ -130,7 +135,9 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(second["point"], first["point"])
         self.assertEqual(second["progress"]["step"], 1)
         self.assertEqual(second["where"]["ids"], ["S1.p1"])
-        self.assertIn("Remaining basics", self.backend.prompts[-1])
+        context, _ = json.JSONDecoder().raw_decode(self.backend.prompts[-1].split("本轮材料（JSON 数据）：\n", 1)[1])
+        self.assertEqual(context["reading_progress"][-1]["next"], {"where": first["progress"]["next"]["where"]})
+        self.assertNotIn("Remaining basics", self.backend.prompts[-1])
 
     def test_missing_fields_retry_once_and_no_partial_state(self):
         self.display_overview()
@@ -170,12 +177,12 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("PRIVATE_IDENTITY", prompt)
         self.assertNotIn("PRIVATE_CONFIRMATION", prompt)
         self.assertNotIn(str(self.home), prompt)
-        self.assertIn('"Quantum": "none"', prompt)
+        self.assertNotIn('"Quantum": "none"', prompt)
 
     def test_invalid_requests_and_ids_rejected_before_model(self):
         for request in ({"mode": "unknown"}, {"mode": "ask"}, {"mode": "ask", "question": "Q", "where": "no-such-id"}):
             with self.subTest(request=request), self.assertRaises(ValueError):
-                self.app.explain(PAPER, request)
+                self.app.explain(PAPER, reading_request(request))
         self.assertEqual(self.backend.prompts, [])
         with self.assertRaises(FileNotFoundError):
             self.app.acknowledge(PAPER, "unknown")
@@ -233,11 +240,11 @@ class ServiceTests(unittest.TestCase):
             release.wait(3)
             return original(prompt, schema)
         self.backend.generate = blocking
-        task_id = self.app.explain(PAPER, {"mode": "continue"})
+        task_id = self.app.explain(PAPER, reading_request({"mode": "continue"}))
         self.assertTrue(entered.wait(2))
         try:
             with self.assertRaises(RuntimeError):
-                self.app.explain(PAPER, {"mode": "continue"})
+                self.app.explain(PAPER, reading_request({"mode": "continue"}))
         finally:
             release.set()
         events = [event for event in self.app.task_events(task_id) if event]
@@ -255,7 +262,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(self.run_turn()[1], "error")
         self.assertEqual(self.backend.prompts, [])
         with self.assertRaises(ValueError):
-            self.app.explain(PAPER, {"mode": "ask", "quote": "text", "page": True})
+            self.app.explain(PAPER, reading_request({"mode": "ask", "quote": "text", "page": True}))
 
 
 if __name__ == "__main__":

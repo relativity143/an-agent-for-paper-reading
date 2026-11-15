@@ -71,7 +71,7 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 继续做浏览器联调时，先看 [给 Claude 的 M1 交接说明](../docs/claude-m1-handoff.md)，其中列出了前端待改位置、恢复流程和验收清单。
 
 1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。打开未读论文不自动生成；由读者点击“继续”开始。
-2. `POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue"}`，或带选中文本的 `ask`。
+2. 每次打开论文先重新询问本次基础，也可明确选择从基础讲起。`POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue","reading_context":"本次基础与目标","reading_session":"本页随机UUID"}`，或带选中文本的 `ask`。`reading_context` 必填；背景与会话只留在本页内存，不预填旧档案。完整约定见 [每次阅读重新询问基础](../docs/fresh-reading-context.md)。
 3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字，`result` 是一个 JSON 讲解对象；每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭。
 4. **卡片成功显示后**，调用 `POST /api/papers/<paper>/explanations/<id>/displayed`，请求体 `{}`。重开历史时同样调用；重复请求幂等。只有这一步才写阅读日志及实际讲过的概念。
 5. 生成期间可 `POST /api/tasks/<task>/cancel`，请求体 `{}`；成功返回 `{task,cancelled:true}`。事件流以中文 error 结束，不保存本轮讲解，可立即重试；别的论文不受影响。已经结束的任务再次取消也成功，保留已保存结果；未知任务 404。API 断开本机连接不保证提供商立即停止计费。
@@ -80,7 +80,7 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 **前端必须接入显示回执后，继续按钮才能推进。** 缺回执时服务会恢复上一轮，避免跳过未显示的基础。`history` 是已经生成的对象列表，生成成功本身不证明已显示或已理解。
 
-`assumes`、`unexpanded` 和导读提过的词不会自动写成 `explained`；已有 `known` 和 `unsure` 也不会被覆盖。没有读者确认，模型不能把概念显示为 `known`。
+`assumes`、`unexpanded` 和导读提过的词不会自动写成 `explained`；已有 `known` 和 `unsure` 也不会被覆盖。生成新讲解不读取这些旧状态：`previously` 为空，`assumes.status` 使用 `new`，以本次回答决定讲解起点。旧历史只恢复位置，同一页面内刚生成的讲解可供连续阅读使用；“讲过”仍不等于“懂了”。
 
 ## 设置、列表、提问与上传
 

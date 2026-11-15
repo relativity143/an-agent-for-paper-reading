@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>论文阅读</title>
 <link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="vendor/pdfjs/text_layer.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,6 +28,24 @@
   </section>
 
   <section class="pane agent-pane" aria-label="讲解">
+    <section id="reading-context" class="reading-context" aria-labelledby="reading-context-heading" hidden>
+      <div data-context-editor>
+        <h2 id="reading-context-heading">这次从什么基础开始？</h2>
+        <label for="reading-context-input">你学过哪些相关知识？哪些还不熟悉？这次想读懂什么？</label>
+        <textarea id="reading-context-input" data-context-input rows="3" maxlength="2000" autocomplete="off" aria-describedby="reading-context-hint reading-context-error" placeholder="例如：学过线性代数，量子力学还不熟悉；这次想先看懂论文的问题和主要结论。"></textarea>
+        <p id="reading-context-hint" class="hint">只用于本次阅读，重新打开会再问。确认后点“继续”开始讲解；现在也可以查看历史、换论文或选模型。</p>
+        <p id="reading-context-error" data-context-error class="reading-context-error" role="alert"></p>
+        <div class="reading-context-actions">
+          <button type="button" data-context-confirm class="btn btn-primary">按这些基础开始</button>
+          <button type="button" data-context-zero class="btn">从基础讲起</button>
+          <button type="button" data-context-cancel class="btn btn-small" hidden>取消修改</button>
+        </div>
+      </div>
+      <div data-context-summary class="reading-context-summary" hidden>
+        <p data-context-description></p>
+        <button type="button" data-context-edit class="btn btn-small">修改本次基础</button>
+      </div>
+    </section>
     <div id="cards" class="cards" aria-live="polite"></div>
 
     <form id="composer" class="composer">

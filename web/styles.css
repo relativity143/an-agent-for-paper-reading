@@ -104,7 +104,19 @@ a { color: var(--navy); }
   max-width: 740px; margin: 0 auto; padding: 28px 40px 80px 64px;
   font-family: var(--serif); font-size: 16.5px; line-height: 1.72;
 }
-.paper.paper-pdf { max-width: none; height: 100%; padding: 0; }
+/* PDF 论文：每一页画在页面里（pdf-view.js），纸面保持白色。 */
+.paper.paper-pdf { max-width: none; padding: 16px 16px 48px; }
+.pdf-loading { margin: 24px 8px; color: var(--ink-soft); }
+.pdf-doc { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.pdf-sheet { position: relative; width: 100%; max-width: 980px; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
+.pdf-sheet canvas { display: block; width: 100%; height: 100%; }
+.pdf-sheet::after { content: "第 " attr(data-page) " 页"; position: absolute; top: 6px; right: 6px; z-index: 2; padding: 1px 7px; border-radius: 999px; background: rgba(27, 42, 51, 0.72); color: #fff; font-family: var(--sans); font-size: 11px; line-height: 1.6; pointer-events: none; }
+.pdf-sheet.flash { animation: pdf-flash 1.2s ease-out; }
+@keyframes pdf-flash { from { outline: 3px solid var(--hl-edge); outline-offset: 2px; } to { outline: 3px solid transparent; outline-offset: 2px; } }
+.pdf-sheet .textLayer .pdf-hit { background: rgba(255, 214, 64, 0.45); border-radius: 2px; mix-blend-mode: multiply; }
+.pdf-sheet-error { margin: 0; padding: 24px; color: #7E1820; font-family: var(--sans); font-size: 13px; }
+/* 嵌入显示没成时退回浏览器自带的阅读器，占满整个面板。 */
+.paper.paper-pdf.paper-pdf-frame { height: 100%; padding: 0; }
 .pdf { display: block; width: 100%; height: 100%; border: 0; }
 .paper-head h2 { margin: 0 0 6px; font-size: 24px; line-height: 1.3; }
 .paper-head p { margin: 0 0 22px; color: var(--ink-soft); font-size: 14px; font-family: var(--sans); }
@@ -228,6 +240,10 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 .route li.is-past .route-mark { border-color: var(--ink-soft); background: var(--ink-soft); color: var(--card-bg); }
 .route li.is-past::before { background: var(--ink-soft); }
 .route li.is-current .route-mark { background: var(--accent); color: var(--card-bg); }
+button.route-jump { display: block; margin: 0; padding: 0; border: 0; background: none; font-family: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+button.route-jump:hover { color: var(--navy); text-decoration-style: solid; }
+button.route-jump:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .route-here { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-ink); font-size: 11.5px; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
 
 .card-note { border-style: dashed; box-shadow: none; color: var(--ink-soft); }
@@ -245,6 +261,21 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 .card-error { border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
 .card-question { align-self: flex-end; max-width: 88%; background: var(--panel-bg); box-shadow: none; }
 .card-question blockquote { margin: 4px 0 6px; padding-left: 10px; border-left: 2px solid var(--line-strong); font-family: var(--serif); font-size: 14px; color: var(--ink-soft); }
+
+/* 本次阅读的基础：确认后收起，历史和论文始终可以查看。 */
+.reading-context { flex: none; max-height: 45%; overflow-y: auto; padding: 12px 18px; border-bottom: 1px solid var(--line-strong); background: var(--paper-bg); }
+.reading-context h2 { margin: 0 0 6px; font-size: 16px; }
+.reading-context label { display: block; margin-bottom: 6px; font-size: 13px; }
+.reading-context textarea { width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px; border: 1px solid var(--ink-soft); border-radius: 4px; background: var(--card-bg); color: var(--ink); font: inherit; }
+.reading-context .hint { margin: 6px 0; }
+.reading-context-error { margin: 6px 0; color: var(--accent-ink); font-size: 13px; }
+.reading-context-error:empty { display: none; }
+.reading-context-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.reading-context-actions .btn-primary { min-width: 0; font-size: 14px; letter-spacing: 0; }
+.reading-context-actions .btn { padding: 0 12px; }
+.reading-context-summary { display: flex; align-items: center; gap: 10px; }
+.reading-context-summary p { flex: 1; min-width: 0; margin: 0; color: var(--ink-soft); font-size: 13px; overflow-wrap: anywhere; }
+.reading-context-summary .btn { flex: none; }
 
 /* 输入区 */
 .composer { flex: none; padding: 10px 18px 14px; background: var(--paper-bg); border-top: 1.5px solid var(--line-strong); display: flex; flex-direction: column; gap: 8px; }

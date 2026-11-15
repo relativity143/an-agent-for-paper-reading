@@ -148,7 +148,7 @@ class ServerIntegrationTests(unittest.TestCase):
         return json.loads(data)
 
     def turn(self):
-        task = self.json_request("POST", f"/api/papers/{PAPER}/explain", {"mode": "continue"}, expected=202)["task"]
+        task = self.json_request("POST", f"/api/papers/{PAPER}/explain", {"mode": "continue", "reading_context": "从基础讲起。"}, expected=202)["task"]
         status, headers, data = self.request("GET", f"/api/tasks/{task}/events")
         self.assertEqual(status, 200)
         self.assertIn("text/event-stream", headers["Content-Type"])
@@ -221,7 +221,9 @@ class ServerIntegrationTests(unittest.TestCase):
         self.assertEqual(third["point"], second["point"])
         self.assertEqual(third["where"], second["where"])
         self.assertEqual((third["progress"]["step"], second["progress"]["step"]), (1, 1))
-        self.assertIn("Remaining basics at this point", self.backend.prompts[-1])
+        context = json.loads(self.backend.prompts[-1].split("本轮材料（JSON 数据）：\n", 1)[1])
+        self.assertEqual(context["reading_progress"][-1]["next"], {"where": second["progress"]["next"]["where"]})
+        self.assertNotIn("Remaining basics at this point", self.backend.prompts[-1])
         self.assertEqual(set(self.store.profile()["concepts"]), {"First foundation"})
         self.assert_no_known()
         self.acknowledge(third)

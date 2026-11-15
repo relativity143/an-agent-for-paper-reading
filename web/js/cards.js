@@ -7,7 +7,7 @@ const STATUS_LABEL = {
   known: '你确认懂了',
   explained: '讲过',
   unsure: '仍不确定',
-  new: '这一轮补',
+  new: '本轮基础',
 };
 
 // PDF 论文里，位置写成“PDF 第 2 页”“page 2”“p. 2”这样的文字。
@@ -148,6 +148,7 @@ export function pendingCard() {
 }
 
 // 出错提示。可以带一个按钮（如“恢复”“再试一次”）。
+// action 可以是一个按钮，也可以是几个按钮的数组。
 export function errorCard(message, action) {
   const card = document.createElement('div');
   card.className = 'card card-error';
@@ -155,13 +156,19 @@ export function errorCard(message, action) {
   const text = document.createElement('p');
   text.textContent = message;
   card.append(text);
-  if (action) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn btn-small';
-    button.textContent = action.label;
-    button.addEventListener('click', () => action.run(card));
-    card.append(button);
+  const actions = [].concat(action || []);
+  if (actions.length) {
+    const row = document.createElement('div');
+    row.className = 'card-actions';
+    for (const item of actions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-small';
+      button.textContent = item.label;
+      button.addEventListener('click', () => item.run(card));
+      row.append(button);
+    }
+    card.append(row);
   }
   return card;
 }

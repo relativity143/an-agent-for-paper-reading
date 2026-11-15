@@ -5,6 +5,7 @@ import { createApi } from './api.js';
 import { createPaperView } from './paper.js';
 import { explanationCard, pendingCard, errorCard, noteCard, questionCard, setReceiptWarning } from './cards.js';
 import { createManager, backendLabel, chosenModel } from './manage.js';
+import { createReadingContext } from './reading-context.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,6 +33,7 @@ const state = {
 };
 
 const paperView = createPaperView(els.paper, els.paperPane);
+const readingContext = createReadingContext($('reading-context'), refreshButtons);
 
 function setStatus(text) {
   els.status.textContent = text || '';
@@ -44,14 +46,15 @@ function hasQuestionInput() {
 
 // “继续”要等上一轮的显示状态记好之后才放开，否则后端会重复返回同一轮。
 function refreshButtons() {
-  const blocked = state.busy || !state.paper || state.unacked.size > 0;
+  const blocked = state.busy || !state.paper || state.unacked.size > 0 || !readingContext.ready();
   els.continueBtn.disabled = blocked || state.ended;
-  els.continueBtn.title = state.ended ? '主线已经讲完，可以继续提问。' : '';
+  els.continueBtn.title = !readingContext.ready() ? '先确认本次阅读的基础。' : state.ended ? '主线已经讲完，可以继续提问。' : '';
   els.askBtn.disabled = blocked || !hasQuestionInput();
 }
 
 function setBusy(busy) {
   state.busy = busy;
+  readingContext.setBusy(busy);
   refreshButtons();
   // 设置面板开着时，让它跟着变：生成中不能切换后端，生成完放开。
   if (state.manager) state.manager.busyChanged();
@@ -147,6 +150,7 @@ async function showExplanation(explanation, { select = true } = {}) {
   let card = state.cards.get(explanation.id);
   if (!card) {
     card = explanationCard(explanation);
+    linkRoute(card);
     state.cards.set(explanation.id, card);
     els.cards.append(card);
     showAsked(card, explanation.asked);
@@ -162,6 +166,63 @@ async function showExplanation(explanation, { select = true } = {}) {
   await painted();
   await acknowledge(card, explanation);
   return card;
+}
+
+// 路线图里认得出位置的站点，把位置文字变成按钮：点一下，左边的原文跳到那里。
+// 认不出来的保持普通文字。点击由卡片区统一处理（data-loc / data-page）。
+function linkRoute(card) {
+  card.querySelectorAll('.route .route-range').forEach((range) => {
+    const target = paperView.resolve(range.textContent);
+    if (!target) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'route-range route-jump';
+    button.textContent = range.textContent;
+    button.title = '跳到原文的这个位置';
+    if (target.page) button.dataset.page = String(target.page);
+    else button.dataset.loc = target.id;
+    range.replaceWith(button);
+  });
+}
+
+// 正在生成的那一轮的任务编号。连接断开或刷新页面后还要能停止它，所以按论文记在这个标签页里。
+const taskKey = () => `paperread-task:${state.paper}`;
+function rememberTask(task) {
+  try { sessionStorage.setItem(taskKey(), task); } catch { /* 记不下来时只是少一个“停止”按钮 */ }
+}
+function forgetTask() {
+  try { sessionStorage.removeItem(taskKey()); } catch { /* 同上 */ }
+}
+function knownTask() {
+  if (!state.api || !state.api.cancelTask) return null;
+  try { return sessionStorage.getItem(taskKey()); } catch { return null; }
+}
+
+// 连接断开后，那一轮可能还在生成：按记下的任务编号停止它，再看看有没有已经保存的讲解。
+async function stopLostTask() {
+  const task = knownTask();
+  if (!task || state.busy) return;
+  setStatus('正在停止…');
+  try {
+    await state.api.cancelTask(task);
+  } catch (error) {
+    // 服务重启过就不认识这个任务了，那一轮也已经不在了。
+    if (error.status === 404) forgetTask();
+    setStatus(error.status === 404 ? '那一轮已经不在了，可以直接再试。' : (error.message || '没能停止，可以再点一次。'));
+    return;
+  }
+  forgetTask();
+  await recover();
+  const note = noteCard('已停止这一轮。上面是已经保存的讲解；可以换模型或调时限，然后再点“继续”。');
+  note.classList.add('card-stopped');
+  els.cards.append(note);
+}
+
+// “恢复”之外，知道任务编号时再给一个“停止这一轮”。
+function recoverActions() {
+  const actions = [{ label: '恢复', run: recover }];
+  if (knownTask()) actions.push({ label: '停止这一轮', run: stopLostTask });
+  return actions;
 }
 
 // 这份讲解是回答读者提问的：把“你的问题”放在它前面。
@@ -233,13 +294,13 @@ function describeFailure(error) {
   if (error.kind === 'disconnected') {
     return {
       message: `${error.message}不会重新生成；点“恢复”看看这一轮是不是已经讲完。`,
-      action: { label: '恢复', run: recover },
+      action: recoverActions(),
     };
   }
   if (error.kind === 'http' && error.status === 409) {
     return {
       message: `${error.message || '已有一轮讲解正在生成。'}这不是论文的问题，稍等一下再点“恢复”。`,
-      action: { label: '恢复', run: recover },
+      action: recoverActions(),
     };
   }
   if (/超时|timed out/i.test(error.message || '')) {
@@ -253,7 +314,8 @@ function describeFailure(error) {
 
 // 请求一轮讲解。每次只返回一份讲解，这里不自动接着请求下一轮。
 async function requestExplanation(request, questionInfo, restoreInput) {
-  if (state.busy || !state.paper) return;
+  if (state.busy || !state.paper || state.unacked.size || !readingContext.ready()) return;
+  request = readingContext.withRequest(request);
   setBusy(true);
   clearNotices();
   els.cards.querySelectorAll('.card-start').forEach((c) => c.remove());
@@ -282,6 +344,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
   let stopped = false;
   const onTask = (task) => {
     if (!state.api.cancelTask) return;
+    rememberTask(task);
     stopBtn.hidden = false;
     stopBtn.addEventListener('click', async () => {
       stopped = true;
@@ -304,6 +367,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
       phase = text;
       showProgress();
     }, onTask);
+    forgetTask();
     pending.remove();
     const live = state.api.mode === 'live';
     if (!live && request.mode === 'ask' && explanation.type === 'overview') {
@@ -314,6 +378,8 @@ async function requestExplanation(request, questionInfo, restoreInput) {
     // 这一轮给的是导读或上一轮讲解时，问题还留在后端：换成“留着的问题”那张卡片。
     if (await refreshPending() && questionEl) questionEl.remove();
   } catch (error) {
+    // 后端明确说这一轮结束了，才忘掉任务编号；断开时它可能还在生成。
+    if (error.kind === 'model') forgetTask();
     pending.remove();
     // 提问的那一轮没讲成时，后端一般已经把问题留下了；没留下才把输入放回去，不让问题丢掉。
     const queued = request.mode === 'ask' && await refreshPending();
@@ -338,7 +404,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
 }
 
 function submitQuestion() {
-  if (state.busy || state.unacked.size) return;
+  if (state.busy || state.unacked.size || !readingContext.ready()) return;
   const question = els.question.value.trim();
   const request = { mode: 'ask' };
   const info = { question };
@@ -406,11 +472,11 @@ function bindEvents() {
     }
   });
 
-  // 在原文上选中一段后，旁边出现“问这一段”。PDF 由浏览器自带的阅读器显示，读不到选中的文字。
+  // 在原文上选中一段后，旁边出现“问这一段”。PDF 嵌在页面里显示时也可以选；退回浏览器自带的阅读器时读不到选中的文字。
   const hideAsk = () => { els.askSelection.hidden = true; };
   els.paper.addEventListener('mouseup', () => {
     setTimeout(() => {
-      const picked = paperView.isPdf() ? null : paperView.selection();
+      const picked = paperView.selection();
       if (!picked) { hideAsk(); return; }
       els.askSelection.hidden = false;
       const width = els.askSelection.offsetWidth;
@@ -418,7 +484,14 @@ function bindEvents() {
       els.askSelection.style.left = `${left}px`;
       els.askSelection.style.top = `${Math.max(12, picked.rect.top - 44)}px`;
       els.askSelection.onclick = () => {
-        setQuote({ quote: picked.quote, where: picked.where });
+        if (picked.page) {
+          // PDF：把选中的原文和它所在的页填进提问区的那两栏，和手动粘贴走同一条路。
+          els.pdfQuote.value = picked.quote;
+          els.pdfPage.value = String(picked.page);
+          refreshButtons();
+        } else {
+          setQuote({ quote: picked.quote, where: picked.where });
+        }
         hideAsk();
         window.getSelection().removeAllRanges();
         els.question.focus();
@@ -426,6 +499,10 @@ function bindEvents() {
     }, 0);
   });
   els.paperPane.addEventListener('scroll', hideAsk, { passive: true });
+  // 从浏览器的前进/后退缓存返回也算重新打开，不能复用上次确认。
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted && state.api?.mode === 'live' && state.paper) readingContext.reset(true);
+  });
   document.addEventListener('mousedown', (event) => {
     if (event.target !== els.askSelection && !els.paper.contains(event.target)) hideAsk();
   });
@@ -488,6 +565,8 @@ async function start() {
     setStatus('正在打开论文…');
     const meta = await openPaper(input);
     state.paper = meta.paper;
+    // 每次打开都重新问；历史仅用于回看，不作为这一次的基础。
+    readingContext.reset(manager.live);
     const content = await state.api.getContent(state.paper);
     // PDF 的正文接口只给出文件地址，标题和作者取自论文信息。
     state.content = { ...meta, ...content };
@@ -500,7 +579,7 @@ async function start() {
     paperView.render(state.content);
     if (paperView.isPdf()) {
       els.pdfFields.hidden = false;
-      els.question.placeholder = '想问什么？要问某一句原文，请在上面填页码并粘贴那句话。';
+      els.question.placeholder = '想问什么？可以在左边选中一句原文再问；选不了的时候，在上面填页码并粘贴那句话。';
     }
 
     setStatus('');
