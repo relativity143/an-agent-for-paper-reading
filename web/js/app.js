@@ -27,6 +27,7 @@ const state = {
   unacked: new Set(),      // 已显示、但“已显示”还没记到后端的讲解
   pendingQuote: null,      // HTML 论文里选中的原文：{quote, where}
   busy: false,
+  manager: null,           // 论文列表、上传、后端设置
   ended: false,            // 主线已经讲完
 };
 
@@ -52,6 +53,8 @@ function refreshButtons() {
 function setBusy(busy) {
   state.busy = busy;
   refreshButtons();
+  // 设置面板开着时，让它跟着变：生成中不能切换后端，生成完放开。
+  if (state.manager) state.manager.busyChanged();
 }
 
 // 步骤名可能来自模型或大纲，只当作文字：用 DOM 属性赋值，不拼进 HTML。
@@ -195,6 +198,13 @@ function describeFailure(error) {
       action: { label: '恢复', run: recover },
     };
   }
+  // 后端转述模型后端的原因时，有几句是英文，这里换成读者看得懂的说法。
+  if (/timed out/i.test(error.message || '')) {
+    return {
+      message: '模型在限定的时间内没有答完，这一轮没有保存。可以再试一次；长论文的导读比较慢，时限可以在本机 config.json 的 timeout_seconds 里调大（最大 600 秒），改完重启服务。',
+      action: null,
+    };
+  }
   return { message: error.message || '这一轮没有讲成，可以再试一次。', action: null };
 }
 
@@ -203,6 +213,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
   if (state.busy || !state.paper) return;
   setBusy(true);
   clearNotices();
+  els.cards.querySelectorAll('.card-start').forEach((c) => c.remove());
   let questionEl = null;
   if (questionInfo) {
     questionEl = questionCard(questionInfo);
@@ -213,10 +224,20 @@ async function requestExplanation(request, questionInfo, restoreInput) {
   const pending = pendingCard();
   els.cards.append(pending);
   pending.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  // 真实模型讲一轮可能要一两分钟。显示已经等了多久，让读者知道它还在进行。
+  const startedAt = Date.now();
+  let phase = '正在准备这一轮讲解…';
+  const showProgress = () => {
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    const text = seconds >= 5 ? `${phase}（已等 ${seconds} 秒）` : phase;
+    setStatus(text);
+    pending.querySelector('.pending-text').textContent = text;
+  };
+  const ticker = setInterval(showProgress, 1000);
   try {
     const explanation = await state.api.explain(state.paper, request, (text) => {
-      setStatus(text);
-      pending.querySelector('.pending-text').textContent = text;
+      phase = text;
+      showProgress();
     });
     pending.remove();
     if (request.mode === 'ask' && explanation.type === 'overview') {
@@ -235,6 +256,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
     card.scrollIntoView({ block: 'end', behavior: 'smooth' });
     setStatus('');
   } finally {
+    clearInterval(ticker);
     setBusy(false);
   }
 }
@@ -363,7 +385,8 @@ async function start() {
   setBusy(true);
   try {
     state.api = await createApi();
-    const manager = createManager({ api: state.api, current: () => state.paper, onBackend: showBackend });
+    const manager = createManager({ api: state.api, current: () => state.paper, onBackend: showBackend, busy: () => state.busy });
+    state.manager = manager;
     if (manager.live) {
       showBackend(state.api.backend);
       els.mode.title = '选择用哪个模型来讲解';
@@ -405,8 +428,17 @@ async function start() {
       await showExplanation(history[i], { select: i === history.length - 1 });
     }
     setBusy(false);
-    // 第一次打开时先请求导读；之后每一轮都由读者点“继续”或提问触发。
-    if (!history.length) await requestExplanation({ mode: 'continue' });
+    if (!history.length) {
+      if (manager.live) {
+        // 不自动开始：生成导读要调用模型，要等一两分钟，期间也换不了后端。让读者自己点。
+        const start = noteCard('这篇论文还没有读过。点“继续”，先生成全文导读；长论文可能要等一两分钟。用的是右上角显示的模型后端，想换的话先点它。');
+        start.classList.add('card-start');
+        els.cards.append(start);
+      } else {
+        // 样例数据不调用模型，直接显示导读。
+        await requestExplanation({ mode: 'continue' });
+      }
+    }
   } catch (error) {
     if (!state.paper) els.title.textContent = '没能打开论文';
     els.cards.append(errorCard(error.message || '打开论文时出错了。', { label: '重新加载', run: () => location.reload() }));

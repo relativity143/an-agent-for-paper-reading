@@ -41,7 +41,8 @@ function readTime(value) {
 }
 
 // current() 返回正在读的论文编号；onBackend(name) 在后端切换成功后调用。
-export function createManager({ api, current, onBackend }) {
+// busy() 返回现在是否正在生成讲解。
+export function createManager({ api, current, onBackend, busy = () => false }) {
   const libraryDialog = document.getElementById('library-dialog');
   const libraryBody = document.getElementById('library-body');
   const settingsDialog = document.getElementById('settings-dialog');
@@ -49,6 +50,7 @@ export function createManager({ api, current, onBackend }) {
   const overlay = document.getElementById('drop-overlay');
   const live = api.mode === 'live';
   let uploading = false;
+  let shownSettings = null; // 设置面板现在显示的那份设置
 
   // 上传一份 PDF，成功后直接打开它。status 是显示进度和错误的地方。
   async function upload(file, status) {
@@ -153,11 +155,15 @@ export function createManager({ api, current, onBackend }) {
 
   // 设置：只能选用哪个后端。密钥、地址和模型名都在本机的配置文件里，页面不填也不看密钥。
   function renderSettings(settings, message) {
+    shownSettings = settings;
+    const generating = busy();
     const root = el('div', 'settings');
     root.append(el('p', 'hint', '选择用哪个模型来讲解。切换后，下一轮讲解就生效。'));
     const group = el('fieldset', 'backend-list');
     group.append(el('legend', 'sr-only', '模型后端'));
-    const status = el('p', 'status settings-status', message || '');
+    group.disabled = generating;
+    const status = el('p', 'status settings-status',
+      generating ? '现在正在生成一轮讲解，生成完才能切换。完成后这里会自动放开。' : (message || ''));
     status.setAttribute('role', 'status');
 
     for (const backend of settings.backends || []) {
@@ -254,5 +260,10 @@ export function createManager({ api, current, onBackend }) {
     overlay.addEventListener('click', hide);
   }
 
-  return { live, libraryView, openLibrary, openSettings };
+  // 生成开始或结束时，开着的设置面板跟着更新。
+  function busyChanged() {
+    if (settingsDialog.open && shownSettings) settingsBody.replaceChildren(renderSettings(shownSettings));
+  }
+
+  return { live, libraryView, openLibrary, openSettings, busyChanged };
 }

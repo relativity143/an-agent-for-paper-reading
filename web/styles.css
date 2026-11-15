@@ -313,6 +313,7 @@ a.library-item:hover { border-color: var(--line-strong); }
 .backend-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card-bg); cursor: pointer; }
 .backend-option:has(input:checked) { border-color: var(--line-strong); }
 .backend-option:has(input:disabled) { cursor: not-allowed; }
+.backend-list:disabled .backend-option { cursor: not-allowed; opacity: 0.75; }
 .backend-option:has(input:disabled) .backend-name, .backend-option:has(input:disabled) .backend-note { opacity: 0.7; }
 .backend-option input { margin-top: 6px; accent-color: var(--accent); }
 .backend-text { display: flex; flex-direction: column; }

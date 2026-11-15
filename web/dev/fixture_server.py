@@ -5,6 +5,7 @@
 它只用来检查页面和后端的配合，不能说明真实模型的讲解质量。
 
     python3 web/dev/fixture_server.py --port 8766
+    python3 web/dev/fixture_server.py --port 8766 --delay 8   每一轮先等 8 秒，看“生成中”的样子
 
 然后打开：
     http://127.0.0.1:8766/?paper=2610.27436v1   HTML 论文：导读 → 两轮讲解 → 一次模型失败 → 主线结束
@@ -17,6 +18,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -139,10 +141,14 @@ def pdf_bytes(pages):
 class ScriptedBackend:
     """按论文依次给出固定输出；输出是异常时就抛出它。"""
 
-    def __init__(self, scripts):
+    def __init__(self, scripts, delay=0.0):
         self.scripts = scripts
+        self.delay = delay
 
     def generate(self, prompt, schema):
+        # 真实模型一轮要一两分钟。加上等待，才能看到“生成中”时页面的样子。
+        if self.delay:
+            time.sleep(self.delay)
         # 只认“本轮材料”开头的那一个论文编号：阅读记录里也会出现别的论文的编号。
         current = re.search(r'本轮材料[^\n]*\n\{"paper": "([^"]+)"', prompt)
         for paper, queue in self.scripts.items():
@@ -164,6 +170,7 @@ class NoNetwork:
 def main():
     parser = argparse.ArgumentParser(description="前端联调用的固定输出服务")
     parser.add_argument("--port", type=int, default=8766)
+    parser.add_argument("--delay", type=float, default=0.0, help="每一轮固定输出之前等待的秒数，模拟真实模型的耗时")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="paperread-fixture-") as home:
         os.environ["PAPERREAD_HOME"] = home
@@ -189,7 +196,8 @@ def main():
                 finally:
                     self.backend = scripted
 
-        backend = ScriptedBackend({HTML_PAPER: html_script(BackendError), PDF_PAPER: pdf_script(BackendError)})
+        backend = ScriptedBackend({HTML_PAPER: html_script(BackendError), PDF_PAPER: pdf_script(BackendError)},
+                                  delay=max(0.0, args.delay))
         app = FixtureApplication(core.Store(client=NoNetwork()), backend,
                                  backend_info={"backend": "fixture", "backends": []})
         server = create_server(app, port=args.port)
