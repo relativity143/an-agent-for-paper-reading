@@ -72,6 +72,23 @@ function renderSteps(current) {
     item.append(text);
     return item;
   }));
+  // 导读卡片里的路线图跟着标出现在讲到哪一站。
+  els.cards.querySelectorAll('.route li').forEach((item) => {
+    const step = Number(item.dataset.step);
+    const here = Boolean(current) && step === current;
+    item.classList.toggle('is-past', Boolean(current) && step < current);
+    item.classList.toggle('is-current', here);
+    if (here) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
+    const badge = item.querySelector('.route-here');
+    if (here && !badge) {
+      const pill = document.createElement('span');
+      pill.className = 'route-here';
+      pill.textContent = '现在讲到这里';
+      item.querySelector('.route-name').append(pill);
+    } else if (!here && badge) {
+      badge.remove();
+    }
+  });
 }
 
 function validSteps(steps) {

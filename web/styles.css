@@ -214,11 +214,21 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 .step-line { font-weight: 700; color: var(--accent-ink); }
 .next { font-weight: 600; }
 
-.route { counter-reset: route; }
-.route li { counter-increment: route; display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
-.route li::before { content: counter(route); flex: none; width: 18px; font-weight: 700; color: var(--accent-ink); }
-.route-name { flex: 1; }
-.route-range { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+/* 阅读路线：竖着排的路线图。编号是站点，中间的线把它们连起来。 */
+.route { list-style: none; margin: 4px 0 0; padding: 0; }
+.route li { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 12px; padding-bottom: 14px; }
+.route li:last-child { padding-bottom: 0; }
+.route + .hint { margin-top: 12px; }
+.route li::before { content: ""; position: absolute; left: 12px; top: 28px; bottom: 2px; width: 2px; background: var(--line); }
+.route li:last-child::before { display: none; }
+.route-mark { width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--accent); background: var(--card-bg); color: var(--accent-ink); display: grid; place-items: center; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.route-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 2px; }
+.route-name { font-weight: 600; line-height: 1.45; }
+.route-range { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); overflow-wrap: anywhere; }
+.route li.is-past .route-mark { border-color: var(--ink-soft); background: var(--ink-soft); color: var(--card-bg); }
+.route li.is-past::before { background: var(--ink-soft); }
+.route li.is-current .route-mark { background: var(--accent); color: var(--card-bg); }
+.route-here { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-ink); font-size: 11.5px; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
 
 .card-note { border-style: dashed; box-shadow: none; color: var(--ink-soft); }
 .pill-other { border-style: dotted; }

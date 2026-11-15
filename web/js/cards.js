@@ -106,7 +106,13 @@ function overviewCard(x) {
   const foundations = (x.foundations || []).map((f) => `<li><strong>${renderInline(f.name || '')}：</strong>${renderInline(f.note || '')}</li>`).join('');
   const previously = (x.previously || []).map((p) => `<li>${renderInline(p.name || '')}（${escapeHtml(p.paper || '')}${STATUS_LABEL[p.status] ? `，${STATUS_LABEL[p.status]}` : ''}）</li>`).join('');
   const route = x.route || {};
-  const steps = (route.steps || []).map((s) => `<li><span class="route-name">${escapeHtml(s.name || '')}</span><span class="route-range">${escapeHtml(s.range || '')}</span></li>`).join('');
+  // 路线图：每一步一个编号的站点，站点之间连一条线；名字单独一行，位置写在名字下面，再长也不会把名字挤窄。
+  const steps = (route.steps || []).map((s, i) => {
+    const number = Number.isInteger(s.step) ? s.step : i + 1;
+    const range = s.range ? `<span class="route-range">${escapeHtml(s.range)}</span>` : '';
+    return `<li data-step="${number}"><span class="route-mark" aria-hidden="true">${number}</span>`
+      + `<span class="route-body"><span class="route-name"><span class="sr-only">第 ${number} 步：</span>${escapeHtml(s.name || '')}</span>${range}</span></li>`;
+  }).join('');
   const question = x.question || {};
   const conclusions = x.conclusions || {};
   const next = x.next;
