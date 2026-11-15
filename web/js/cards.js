@@ -168,13 +168,16 @@ export function noteCard(message) {
   return card;
 }
 
-export function questionCard({ quote, question, page }) {
+// 读者的提问。where 是 HTML 论文里的位置编号，page 是 PDF 的页码。
+export function questionCard({ quote, question, page, where }) {
   const card = document.createElement('div');
   card.className = 'card card-question';
+  const place = `${where ? refChip(where) : ''}${page ? pageChip(page) : ''}`;
   card.innerHTML = `
-    <p class="card-kind">你的问题${page ? ` · 第 ${Number(page)} 页` : ''}</p>
+    <p class="card-kind">你的问题</p>
     ${quote ? `<blockquote>${escapeHtml(quote)}</blockquote>` : ''}
-    ${question ? `<p>${escapeHtml(question)}</p>` : ''}`;
+    ${question ? `<p>${escapeHtml(question)}</p>` : ''}
+    ${place ? `<p class="locs">${place}</p>` : ''}`;
   return card;
 }
 

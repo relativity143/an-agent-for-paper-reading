@@ -276,6 +276,64 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 }
 
 /* 窄屏：上下排 */
+/* 顶栏上能点的标签 */
+.chip-btn { font-family: inherit; line-height: inherit; background: transparent; cursor: pointer; }
+.chip-btn:hover:not(:disabled) { border-color: var(--line-strong); }
+.chip-btn:disabled { cursor: default; }
+.chip-btn:focus-visible, .library-item:focus-visible, .backend-option:focus-within { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+/* 对话框：论文、模型后端 */
+.dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px));
+  padding: 0; border: 1.5px solid var(--line-strong); border-radius: 8px;
+  background: var(--paper-bg); color: var(--ink); box-shadow: var(--shadow);
+}
+.dialog[open] { display: flex; flex-direction: column; }
+.dialog::backdrop { background: rgba(27, 42, 51, 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.dialog-head h2 { margin: 0; font-size: 16px; }
+.dialog-body { padding: 16px; overflow-y: auto; }
+
+.library { display: flex; flex-direction: column; gap: 14px; cursor: default; }
+.library .open-form { flex-direction: row; align-items: flex-end; }
+.library .open-form label { flex: 1; }
+.library-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.library-status:empty, .settings-status:empty { display: none; }
+.library .library-heading { margin: 4px 0 -6px; font-family: var(--sans); font-size: 13px; font-weight: 600; letter-spacing: 0.08em; color: var(--ink-soft); }
+.library-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.library-item { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card-bg); color: inherit; text-decoration: none; }
+a.library-item:hover { border-color: var(--line-strong); }
+.library-item[aria-current] { border-left: 3px solid var(--accent); }
+.library-title { font-family: var(--serif); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.library-meta { font-size: 12.5px; color: var(--ink-soft); overflow-wrap: anywhere; }
+
+.settings { display: flex; flex-direction: column; gap: 12px; }
+.settings .hint { margin: 0; }
+.backend-list { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.backend-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card-bg); cursor: pointer; }
+.backend-option:has(input:checked) { border-color: var(--line-strong); }
+.backend-option:has(input:disabled) { cursor: not-allowed; }
+.backend-option:has(input:disabled) .backend-name, .backend-option:has(input:disabled) .backend-note { opacity: 0.7; }
+.backend-option input { margin-top: 6px; accent-color: var(--accent); }
+.backend-text { display: flex; flex-direction: column; }
+.backend-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.backend-note { font-size: 13px; color: var(--ink-soft); }
+.api-box { padding: 12px; border: 1px dashed var(--line); border-radius: 6px; }
+.api-box h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.08em; color: var(--ink-soft); }
+.api-details { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0 0 8px; font-size: 13.5px; }
+.api-details dt { color: var(--ink-soft); }
+.api-details dd { margin: 0; overflow-wrap: anywhere; }
+
+/* 把 PDF 拖到页面上时的提示层 */
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(27, 42, 51, 0.55);
+}
+.drop-overlay p {
+  margin: 0; padding: 20px 28px; max-width: min(480px, calc(100vw - 48px));
+  border: 2px dashed var(--line-strong); border-radius: 10px; background: var(--paper-bg); font-size: 16px; text-align: center;
+}
+
 @media (max-width: 900px) {
   .layout { flex-direction: column; }
   .paper-pane { flex: 1 1 46%; border-right: 0; border-bottom: 1.5px solid var(--line-strong); }

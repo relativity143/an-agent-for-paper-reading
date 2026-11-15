@@ -1,6 +1,7 @@
 """前端联调用的本机服务：真实的 HTTP、SSE、显示回执和续读逻辑，模型输出换成固定内容。
 
 不调用任何模型，不联网，数据放在临时目录里，退出时删除，不碰真实的阅读记录。
+在页面上切换模型后端也不会真的换模型：选择会保存到临时目录，讲解仍然是固定输出。
 它只用来检查页面和后端的配合，不能说明真实模型的讲解质量。
 
     python3 web/dev/fixture_server.py --port 8766
@@ -178,9 +179,19 @@ def main():
             "sections": [], "paragraphs": [], "equations": [], "figures": [], "references": []})
         (papers / PDF_PAPER / "paper.pdf").write_bytes(pdf_bytes(PDF_PAGES))
 
+        class FixtureApplication(Application):
+            """设置可以照常切换，也会写进临时目录里的 config.json；但模型始终是固定输出。"""
+
+            def update_settings(self, body):
+                scripted = self.backend
+                try:
+                    return super().update_settings(body)
+                finally:
+                    self.backend = scripted
+
         backend = ScriptedBackend({HTML_PAPER: html_script(BackendError), PDF_PAPER: pdf_script(BackendError)})
-        app = Application(core.Store(client=NoNetwork()), backend,
-                          backend_info={"backend": "fixture", "backends": []})
+        app = FixtureApplication(core.Store(client=NoNetwork()), backend,
+                                 backend_info={"backend": "fixture", "backends": []})
         server = create_server(app, port=args.port)
         print(f"联调服务已启动：http://127.0.0.1:{server.server_port}/?paper={HTML_PAPER}（固定输出，不调用模型）", flush=True)
         try:

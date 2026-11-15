@@ -4,11 +4,12 @@
 import { createApi } from './api.js';
 import { createPaperView } from './paper.js';
 import { explanationCard, pendingCard, errorCard, noteCard, questionCard, setReceiptWarning } from './cards.js';
+import { createManager, backendLabel } from './manage.js';
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
-  title: $('paper-title'), meta: $('paper-meta'), steps: $('steps'), mode: $('mode-chip'),
+  title: $('paper-title'), meta: $('paper-meta'), steps: $('steps'), mode: $('mode-chip'), library: $('library-btn'),
   paperPane: $('paper-pane'), paper: $('paper'), cards: $('cards'),
   composer: $('composer'), status: $('status'), question: $('question'),
   quoteChip: $('quote-chip'), quoteText: $('quote-text'), quoteClear: $('quote-clear'),
@@ -128,6 +129,7 @@ async function showExplanation(explanation, { select = true } = {}) {
     card = explanationCard(explanation);
     state.cards.set(explanation.id, card);
     els.cards.append(card);
+    showAsked(card, explanation.asked);
   }
   if (explanation.type === 'overview') await syncSteps(explanation);
   if (explanation.type !== 'overview') {
@@ -140,6 +142,20 @@ async function showExplanation(explanation, { select = true } = {}) {
   await painted();
   await acknowledge(card, explanation);
   return card;
+}
+
+// 这份讲解是回答读者提问的：把“你的问题”放在它前面。
+// 后端把提问随讲解保存（asked 字段），所以重新打开页面时也能恢复。
+function showAsked(card, asked) {
+  if (!asked || !(asked.quote || asked.question)) return;
+  // 刚才提问时先放的那张卡片，和“点继续后回答”的提示，由这一张代替。
+  els.cards.querySelectorAll('.card-question[data-provisional], .card-note').forEach((c) => c.remove());
+  const question = questionCard({
+    quote: asked.quote, question: asked.question,
+    page: Number.isInteger(asked.page) ? asked.page : null,
+    where: typeof asked.where === 'string' ? asked.where : null,
+  });
+  card.before(question);
 }
 
 function clearNotices() {
@@ -190,6 +206,8 @@ async function requestExplanation(request, questionInfo, restoreInput) {
   let questionEl = null;
   if (questionInfo) {
     questionEl = questionCard(questionInfo);
+    // 先显示出来；讲解回来后，如果它带着这次提问（asked），就换成绑定在那份讲解上的卡片。
+    questionEl.dataset.provisional = '1';
     els.cards.append(questionEl);
   }
   const pending = pendingCard();
@@ -247,6 +265,7 @@ function submitQuestion() {
     if (!picked && !question) return;
     if (picked) { request.quote = picked.quote; request.where = picked.where; }
     info.quote = picked && picked.quote;
+    info.where = picked && picked.where;
     restore = () => { els.question.value = question; setQuote(picked); };
     setQuote(null);
   }
@@ -314,31 +333,29 @@ function bindEvents() {
   });
 }
 
-// 还没指定论文时，给一个输入框。
-function showOpenForm() {
+// 还没指定论文时：直接把打开论文的入口放在页面上。
+function showOpenForm(manager) {
   els.title.textContent = '还没有打开论文';
-  const form = document.createElement('form');
-  form.className = 'card open-form';
-  const label = document.createElement('label');
-  label.textContent = '输入 arXiv 编号或链接，打开一篇论文';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.name = 'paper';
-  input.placeholder = '例如 2203.00107';
-  input.autocomplete = 'off';
-  label.append(input);
-  const button = document.createElement('button');
-  button.type = 'submit';
-  button.className = 'btn btn-primary';
-  button.textContent = '打开';
-  form.append(label, button);
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const value = input.value.trim();
-    if (value) location.search = `?paper=${encodeURIComponent(value)}`;
-  });
-  els.cards.append(form);
-  input.focus();
+  const view = manager.libraryView();
+  view.root.classList.add('card');
+  els.cards.append(view.root);
+  view.focus();
+}
+
+// 先按“已经在本机的论文”打开（包括上传的本地 PDF）；本机没有，再让后端去取。
+async function openPaper(input) {
+  try {
+    return await state.api.getPaper(input);
+  } catch (error) {
+    if (error.kind !== 'http') throw error;
+    return state.api.openPaper(input);
+  }
+}
+
+function showBackend(name) {
+  state.api.backend = name;
+  // 只说明用的是哪种后端，不表示模型已经登录或可用。
+  els.mode.textContent = name ? `后端：${backendLabel(name)}` : '已连接后端';
 }
 
 async function start() {
@@ -346,20 +363,26 @@ async function start() {
   setBusy(true);
   try {
     state.api = await createApi();
-    if (state.api.mode === 'mock') {
+    const manager = createManager({ api: state.api, current: () => state.paper, onBackend: showBackend });
+    if (manager.live) {
+      showBackend(state.api.backend);
+      els.mode.title = '选择用哪个模型来讲解';
+      els.mode.addEventListener('click', manager.openSettings);
+      els.library.addEventListener('click', manager.openLibrary);
+      els.library.title = '换一篇论文，或打开本地 PDF';
+    } else {
       els.mode.textContent = '样例数据';
       els.mode.title = '没有连接到后端，显示的是手写的样例讲解，不会写入任何阅读记录';
-    } else {
-      // 只说明用的是哪种后端，不表示模型已经登录或可用。
-      els.mode.textContent = state.api.backend ? `后端：${state.api.backend}` : '已连接后端';
+      els.mode.disabled = true;
     }
     els.mode.hidden = false;
 
     const input = new URLSearchParams(location.search).get('paper') || state.api.defaultPaper;
-    if (!input) { showOpenForm(); return; }
+    if (!input) { showOpenForm(manager); return; }
+    els.library.hidden = !manager.live;
 
     setStatus('正在打开论文…');
-    const meta = await state.api.openPaper(input);
+    const meta = await openPaper(input);
     state.paper = meta.paper;
     const content = await state.api.getContent(state.paper);
     // PDF 的正文接口只给出文件地址，标题和作者取自论文信息。

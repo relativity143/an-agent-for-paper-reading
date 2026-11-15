@@ -28,13 +28,18 @@ async function getJson(url, options) {
   return body;
 }
 
-function postJson(url, body) {
+function sendJson(method, url, body) {
   return getJson(url, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
+
+const postJson = (url, body) => sendJson('POST', url, body);
+
+// 后端对上传的限制：只收 PDF，最大 50 MiB。先在页面上拦一次，省得白传。
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // 订阅一项任务。每项任务只有一个终态：result 或 error。
 // 连接意外断开时浏览器会自动带着 Last-Event-ID 重连；重连几次仍不行就放弃，
@@ -72,6 +77,17 @@ function realApi(health) {
     mode: 'live',
     backend: typeof health.backend === 'string' ? health.backend : null,
     defaultPaper: null,
+    // 论文列表、设置和上传（docs/agent-architecture.md 4.5 节）。
+    listPapers: async () => (await getJson(`${base}/papers`)).papers || [],
+    getSettings: () => getJson(`${base}/settings`),
+    // 页面只能改“用哪个后端”。密钥不经过页面，这里也不接受别的字段。
+    setBackend: (name) => sendJson('PUT', `${base}/settings`, { backend: name }),
+    // 请求体就是文件本身；文件名只取名字，不带本机路径。
+    uploadPdf: (file) => getJson(`${base}/papers/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf', 'X-Paper-Name': encodeURIComponent(file.name || 'paper.pdf') },
+      body: file,
+    }),
     openPaper: (input) => postJson(`${base}/papers`, { input }),
     getPaper: (paper) => getJson(paperUrl(paper)),
     getContent: (paper) => getJson(`${paperUrl(paper)}/content`),
