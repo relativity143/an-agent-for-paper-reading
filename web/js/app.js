@@ -7,6 +7,7 @@ import { explanationCard, pendingCard, errorCard, noteCard, questionCard, setRec
 import { createManager, backendLabel, chosenModel } from './manage.js';
 import { createReadingContext } from './reading-context.js';
 import { createRecord } from './record.js';
+import { createLayout } from './layout.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,7 +16,7 @@ const els = {
   paperPane: $('paper-pane'), paper: $('paper'), cards: $('cards'),
   composer: $('composer'), status: $('status'), question: $('question'),
   quoteChip: $('quote-chip'), quoteText: $('quote-text'), quoteClear: $('quote-clear'),
-  pdfFields: $('pdf-fields'), pdfPage: $('pdf-page'), pdfQuote: $('pdf-quote'),
+  pdfFields: $('pdf-fields'), pdfPage: $('pdf-page'), pdfQuote: $('pdf-quote'), pdfToggle: $('pdf-toggle'),
   askBtn: $('ask-btn'), continueBtn: $('continue-btn'), askSelection: $('ask-selection'),
 };
 
@@ -34,6 +35,27 @@ const state = {
 };
 
 const paperView = createPaperView(els.paper, els.paperPane);
+// 只看原文、并排、只看讲解；并排时可以拖中缝。
+const layoutView = createLayout({ layout: $('layout'), divider: $('divider'), switcher: $('view-switch') });
+let pdfFieldsOpen = false; // PDF 论文：读者点开了“引用原文”那两栏
+
+// PDF 的页码和原文片段两栏平时收着，省出地方给讲解；选中原文提问或点“引用原文”时才出现。
+function syncPdfFields() {
+  const pdf = paperView.isPdf();
+  const open = pdf && (pdfFieldsOpen || Boolean(els.pdfQuote.value.trim()));
+  els.pdfToggle.hidden = !pdf;
+  els.pdfFields.hidden = !open;
+  els.pdfToggle.setAttribute('aria-expanded', String(open));
+  els.pdfToggle.textContent = open ? '收起引用' : '引用原文';
+}
+
+// 提问框平时一行，字多了自己长高，最多长到六七行。
+function fitQuestion() {
+  // 空着时回到一行：有的浏览器会把换行的提示文字也算进高度。
+  if (!els.question.value) { els.question.style.height = ''; return; }
+  els.question.style.height = 'auto';
+  els.question.style.height = `${Math.min(els.question.scrollHeight + 2, 168)}px`;
+}
 const readingContext = createReadingContext($('reading-context'), refreshButtons);
 // 概念记录与反馈（4.7 节）。位置文字认得出来时，点一下让左边的原文跳过去。
 const record = createRecord({
@@ -65,6 +87,8 @@ function refreshButtons() {
     : !record.ready() ? '先确认上次读这篇时的记录。'
       : state.ended ? '主线已经讲完，可以继续提问。' : '';
   els.askBtn.disabled = blocked || !hasQuestionInput();
+  fitQuestion();
+  syncPdfFields();
 }
 
 function setBusy(busy) {
@@ -460,6 +484,8 @@ function submitQuestion() {
     info.page = page;
     restore = () => { els.pdfQuote.value = quote; els.pdfPage.value = pageText; els.question.value = question; refreshButtons(); };
     els.pdfQuote.value = '';
+    els.pdfPage.value = '';
+    pdfFieldsOpen = false;
   } else {
     const picked = state.pendingQuote;
     if (!picked && !question) return;
@@ -483,14 +509,24 @@ function bindEvents() {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submitQuestion(); }
   });
   els.quoteClear.addEventListener('click', () => setQuote(null));
+  els.pdfToggle.addEventListener('click', () => {
+    const open = !els.pdfFields.hidden;
+    pdfFieldsOpen = !open;
+    // 收起时把填的内容清掉，免得看不见的引用被一起发出去。
+    if (open) { els.pdfQuote.value = ''; els.pdfPage.value = ''; }
+    refreshButtons();
+    if (!open) els.pdfQuote.focus();
+  });
 
   // 卡片里的位置标签、页码、没展开的词，以及点卡片本身。
   els.cards.addEventListener('click', (event) => {
     const loc = event.target.closest('[data-loc]');
-    if (loc) { paperView.flash(loc.dataset.loc); return; }
+    if (loc) { layoutView.showPaper(); paperView.flash(loc.dataset.loc); return; }
     const page = event.target.closest('[data-page]');
     if (page) {
-      if (paperView.gotoPage(Number(page.dataset.page))) els.pdfPage.value = page.dataset.page;
+      layoutView.showPaper();
+      // 那两栏开着时顺手把页码填上，方便接着问这一页。
+      if (paperView.gotoPage(Number(page.dataset.page)) && !els.pdfFields.hidden) els.pdfPage.value = page.dataset.page;
       return;
     }
     const term = event.target.closest('[data-term]');
@@ -524,8 +560,10 @@ function bindEvents() {
           // PDF：把选中的原文和它所在的页填进提问区的那两栏，和手动粘贴走同一条路。
           els.pdfQuote.value = picked.quote;
           els.pdfPage.value = String(picked.page);
+          layoutView.showAgent();
           refreshButtons();
         } else {
+          layoutView.showAgent();
           setQuote({ quote: picked.quote, where: picked.where });
         }
         hideAsk();
@@ -616,8 +654,8 @@ async function start() {
     renderSteps(null);
     paperView.render(state.content);
     if (paperView.isPdf()) {
-      els.pdfFields.hidden = false;
-      els.question.placeholder = '想问什么？可以在左边选中一句原文再问；选不了的时候，在上面填页码并粘贴那句话。';
+      syncPdfFields();
+      els.question.placeholder = '直接写问题，或先在左边选中一句原文（选不了就点“引用原文”）';
     }
 
     setStatus('');

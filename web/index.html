@@ -17,16 +17,23 @@
   </div>
   <div class="topbar-side">
     <ol id="steps" class="steps" aria-label="主线进度"></ol>
+    <div id="view-switch" class="view-switch" role="group" aria-label="显示哪一边">
+      <button type="button" data-view="paper" aria-pressed="false" title="只看原文">原文</button>
+      <button type="button" data-view="both" aria-pressed="true" title="原文和讲解并排">并排</button>
+      <button type="button" data-view="agent" aria-pressed="false" title="只看讲解">讲解</button>
+    </div>
     <button type="button" id="record-btn" class="chip chip-btn" hidden>记录</button>
     <button type="button" id="library-btn" class="chip chip-btn" hidden>论文</button>
     <button type="button" id="mode-chip" class="chip chip-btn" hidden></button>
   </div>
 </header>
 
-<main class="layout">
+<main id="layout" class="layout" data-view="both">
   <section id="paper-pane" class="pane paper-pane" aria-label="论文原文" tabindex="0">
     <article id="paper" class="paper"></article>
   </section>
+
+  <div id="divider" class="divider" role="separator" aria-orientation="vertical" aria-label="拖动调整两边的宽度，双击恢复默认" aria-valuemin="25" aria-valuemax="75" tabindex="0"></div>
 
   <section class="pane agent-pane" aria-label="讲解">
     <section id="reading-context" class="reading-context" aria-labelledby="reading-context-heading" hidden>
@@ -65,11 +72,14 @@
           <input id="pdf-quote" type="text" placeholder="把想问的那句原文粘贴到这里" autocomplete="off">
         </label>
       </div>
-      <label class="sr-only" for="question">想问的问题</label>
-      <textarea id="question" rows="2" placeholder="可以在左边选中一段原文再提问，也可以直接写问题。"></textarea>
-      <div class="composer-actions">
-        <button type="submit" id="ask-btn" class="btn" disabled>提问</button>
-        <button type="button" id="continue-btn" class="btn btn-primary">继续</button>
+      <div class="composer-row">
+        <label class="sr-only" for="question">想问的问题</label>
+        <textarea id="question" rows="1" placeholder="直接写问题，或先在左边选中一段原文"></textarea>
+        <div class="composer-actions">
+          <button type="button" id="pdf-toggle" class="btn btn-quiet" aria-controls="pdf-fields" aria-expanded="false" hidden>引用原文</button>
+          <button type="submit" id="ask-btn" class="btn" disabled>提问</button>
+          <button type="button" id="continue-btn" class="btn btn-primary">继续</button>
+        </div>
       </div>
     </form>
   </section>
