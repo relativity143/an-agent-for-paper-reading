@@ -592,7 +592,7 @@ async function start() {
     if (!history.length) {
       if (manager.live) {
         // 不自动开始：生成导读要调用模型，要等一两分钟，期间也换不了后端。让读者自己点。
-        const start = noteCard('这篇论文还没有读过。点“继续”，先生成全文导读；长论文可能要等一两分钟。用的是右上角显示的模型后端，想换的话先点它。');
+        const start = noteCard('这篇论文还没有读过。点“继续”，先生成全文导读；长论文可能要等一到三分钟。用的是右上角显示的模型后端，想换的话先点它。');
         start.classList.add('card-start');
         els.cards.append(start);
       } else {

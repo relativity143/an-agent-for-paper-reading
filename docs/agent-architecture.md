@@ -2,7 +2,7 @@
 
 本文规定独立 Agent 的前后端边界，供前端和后端并行开发。设计理念、阅读流程和讲解规则仍以 [README.zh-CN.md](../README.zh-CN.md) 和 [implementation.md](implementation.md) 为准；本文只规定 Agent 阶段的结构、接口和分工。
 
-**状态（2026-11-15）：** M1 的前端（见 [web/README.md](../web/README.md)）和后端（见 [server/README.md](../server/README.md)）已经接上，包括双击启动、在页面上选模型后端和模型、调时限、停止正在生成的一轮、论文列表和打开本地 PDF。页面与后端的配合用固定输出的联调服务核对过。真实模型试过一轮（[记录](m1-round2-live-trial.md)）：Codex 能在一两分钟内生成导读，Claude Code 两次都在 600 秒内没有答完，原因还不清楚；讲解质量还没有人工核对过。本文第 4 节按后端的实际实现写。接口有改动时，先改本文，再改代码。
+**状态（2026-11-15）：** M1 的前端（见 [web/README.md](../web/README.md)）和后端（见 [server/README.md](../server/README.md)）已经接上，包括双击启动、在页面上选模型后端和模型、调时限、停止正在生成的一轮、论文列表和打开本地 PDF。页面与后端的配合用固定输出的联调服务核对过。真实模型试过一轮（[记录](m1-round2-live-trial.md)）：Codex 能在一两分钟内生成导读；Claude Code 起初两次在 600 秒内没有答完，固定推理强度为 high、选 sonnet 后约 1.5 到 2.5 分钟完成，600 秒超时的原因没有确证（[诊断记录](claude-timeout-diagnosis.md)）；讲解质量还没有人工核对过。本文第 4 节按后端的实际实现写。接口有改动时，先改本文，再改代码。
 
 ## 1. 分工
 
