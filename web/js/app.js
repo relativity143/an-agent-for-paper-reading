@@ -8,6 +8,7 @@ import { createManager, backendLabel, chosenModel } from './manage.js';
 import { createReadingContext } from './reading-context.js';
 import { createRecord } from './record.js';
 import { createLayout } from './layout.js';
+import { createMap } from './map.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -68,6 +69,22 @@ const record = createRecord({
     if (!target) return false;
     return target.page ? paperView.gotoPage(target.page) : paperView.flash(target.id);
   },
+});
+
+// 概念地图（4.8 节）：从概念记录和讲解历史画出来。
+const mapView = createMap({
+  api: () => state.api,
+  paper: () => state.paper,
+  title: () => (state.content && state.content.title) || state.paper,
+  record: () => record.current(),
+  explanations: () => [...state.explanations.values()],
+  jump(where) {
+    const target = paperView.resolve(where);
+    if (!target) return false;
+    layoutView.showPaper();
+    return target.page ? paperView.gotoPage(target.page) : paperView.flash(target.id);
+  },
+  openRecord: () => record.open(),
 });
 
 function setStatus(text) {
@@ -643,6 +660,7 @@ async function start() {
     readingContext.reset(manager.live);
     // 上次的概念记录：不是空的就先摆出来，确认之后才能继续。
     await record.load();
+    mapView.sync();
     const content = await state.api.getContent(state.paper);
     // PDF 的正文接口只给出文件地址，标题和作者取自论文信息。
     state.content = { ...meta, ...content };

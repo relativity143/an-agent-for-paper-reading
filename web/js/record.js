@@ -329,5 +329,8 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
     // 请求讲解时带上读者确认过的记录版本。
     withRequest: (request) => (supported() ? { ...request, record_version: record.version } : request),
     feedbackBar,
+    // 地图用：当前的记录（没有这个功能时是 null），以及打开记录的对话框。
+    current: () => record,
+    open: openDialog,
   };
 }

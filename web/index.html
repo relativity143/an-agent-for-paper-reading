@@ -22,6 +22,7 @@
       <button type="button" data-view="both" aria-pressed="true" title="原文和讲解并排">并排</button>
       <button type="button" data-view="agent" aria-pressed="false" title="只看讲解">讲解</button>
     </div>
+    <button type="button" id="map-btn" class="chip chip-btn" title="把讲过的概念画成一张图" hidden>地图</button>
     <button type="button" id="record-btn" class="chip chip-btn" hidden>记录</button>
     <button type="button" id="library-btn" class="chip chip-btn" hidden>论文</button>
     <button type="button" id="mode-chip" class="chip chip-btn" hidden></button>
@@ -101,6 +102,16 @@
     <button type="button" class="icon-btn" data-close aria-label="关闭">×</button>
   </header>
   <div id="record-body" class="dialog-body"></div>
+</dialog>
+
+<dialog id="map-dialog" class="map-dialog" aria-labelledby="map-heading">
+  <header class="map-head">
+    <h2 id="map-heading">概念地图</h2>
+    <p id="map-status" class="status" role="status"></p>
+    <button type="button" id="map-add-note" class="btn btn-small">加一张批注</button>
+    <button type="button" class="icon-btn" data-close aria-label="关闭">×</button>
+  </header>
+  <div id="map-frame" class="map-frame"><div id="map-stage" class="map-stage"></div></div>
 </dialog>
 
 <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-heading">

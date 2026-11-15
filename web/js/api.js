@@ -93,6 +93,16 @@ function realApi(health) {
     },
     saveRecord: (paper, version, concepts) => sendJson('PUT', `${paperUrl(paper)}/record`, { version, concepts }),
     sendFeedback: (paper, feedback) => postJson(`${paperUrl(paper)}/feedback`, feedback),
+    // 概念地图的位置和批注（4.8 节）。后端还没有这个接口时返回 null，页面改存在浏览器里。
+    async getMap(paper) {
+      try {
+        return await getJson(`${paperUrl(paper)}/map`);
+      } catch (error) {
+        if (error.kind === 'http' && error.status === 404) return null;
+        throw error;
+      }
+    },
+    saveMap: (paper, version, nodes, notes) => sendJson('PUT', `${paperUrl(paper)}/map`, { version, nodes, notes }),
     // 停止正在生成的一轮。已经结束的任务也返回成功，不会删掉已保存的讲解。
     cancelTask: (task) => postJson(`${base}/tasks/${encodeURIComponent(task)}/cancel`, {}),
     // 请求体就是文件本身；文件名只取名字，不带本机路径。
