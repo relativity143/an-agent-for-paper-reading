@@ -14,9 +14,10 @@ PAPER = "2601.00001v1"
 LOCATION = {"ids": ["S1.p1"], "page": None, "quote": None}
 
 
-def reading_request(request=None):
-    """Add current-turn background without changing persisted question fixtures."""
-    return {"reading_context": "从基础讲起。", **({"mode": "continue"} if request is None else request)}
+def reading_request(request=None, *, app, paper=PAPER):
+    """Confirm the current paper record without changing persisted question fixtures."""
+    return {"reading_context": "从基础讲起。", "record_version": app.record(paper)["version"],
+            **({"mode": "continue"} if request is None else request)}
 
 
 def overview():
@@ -73,7 +74,7 @@ class ServiceTests(unittest.TestCase):
         self.addCleanup(self.app.close)
 
     def run_turn(self, request=None):
-        task_id = self.app.explain(PAPER, reading_request(request))
+        task_id = self.app.explain(PAPER, reading_request(request, app=self.app, paper=PAPER))
         events = [event for event in self.app.task_events(task_id) if event is not None]
         # Wait until the generation worker releases its per-paper active slot.
         with self.app.get_task(task_id).condition:
@@ -107,8 +108,12 @@ class ServiceTests(unittest.TestCase):
         self.app.acknowledge(PAPER, explained["id"])
         self.app.acknowledge(PAPER, explained["id"])
         self.assertEqual(len(self.store.log_show(PAPER, last=0)), 2)
-        self.assertEqual(set(self.store.profile()["concepts"]), {"Necessary foundation"})
-        self.assertEqual(self.store.profile()["concepts"]["Necessary foundation"]["status"], "explained")
+        record = self.app.record(PAPER)
+        self.assertEqual(record["version"], 1)
+        self.assertEqual([item["name"] for item in record["concepts"]], ["Necessary foundation"])
+        self.assertEqual(record["concepts"][0]["status"], "explained")
+        self.assertEqual(record["concepts"][0]["explained_in"], explained["id"])
+        self.assertFalse((self.home / "profile.json").exists())
         self.assertEqual(len(outline_steps(self.path / "outline.md")), 3)
 
     def test_first_question_persists_across_restart_and_continue(self):
@@ -117,7 +122,7 @@ class ServiceTests(unittest.TestCase):
         self.app.acknowledge(PAPER, first["id"])
         other = Application(self.store, FakeBackend(point()))
         self.addCleanup(other.close)
-        task = other.explain(PAPER, reading_request({"mode": "continue"}))
+        task = other.explain(PAPER, reading_request({"mode": "continue"}, app=other, paper=PAPER))
         events = [e for e in other.task_events(task) if e]
         self.assertEqual(events[-1][1], "result")
         self.assertIn('"request": {"mode": "ask", "question": "Why this term?"', other.backend.prompts[0])
@@ -150,16 +155,20 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(len(self.store.log_show(PAPER, last=0)), 1)
         self.assertIn("未保存", error)
 
-    def test_known_and_unsure_remain_on_display(self):
+    def test_legacy_known_and_unsure_remain_unchanged_on_display(self):
         self.display_overview()
         for name, status in (("Necessary foundation", "known"), ("Second foundation", "unsure")):
             self.store.update_profile("mark", SimpleNamespace(concept=name, status=status, source="Reader explicit", paper=PAPER, where="S1.p1"))
+        before = (self.home / "profile.json").read_bytes()
         for _ in range(2):
             _, kind, result = self.run_turn()
             self.assertEqual(kind, "result")
             self.app.acknowledge(PAPER, result["id"])
         self.assertEqual(self.store.profile()["concepts"]["Necessary foundation"]["status"], "known")
         self.assertEqual(self.store.profile()["concepts"]["Second foundation"]["status"], "unsure")
+        self.assertEqual((self.home / "profile.json").read_bytes(), before)
+        self.assertEqual({item["name"]: item["status"] for item in self.app.record(PAPER)["concepts"]},
+                         {"Necessary foundation": "explained", "Second foundation": "explained"})
 
     def test_crash_between_log_and_receipt_does_not_duplicate(self):
         first = self.display_overview()
@@ -182,7 +191,7 @@ class ServiceTests(unittest.TestCase):
     def test_invalid_requests_and_ids_rejected_before_model(self):
         for request in ({"mode": "unknown"}, {"mode": "ask"}, {"mode": "ask", "question": "Q", "where": "no-such-id"}):
             with self.subTest(request=request), self.assertRaises(ValueError):
-                self.app.explain(PAPER, reading_request(request))
+                self.app.explain(PAPER, reading_request(request, app=self.app, paper=PAPER))
         self.assertEqual(self.backend.prompts, [])
         with self.assertRaises(FileNotFoundError):
             self.app.acknowledge(PAPER, "unknown")
@@ -240,11 +249,11 @@ class ServiceTests(unittest.TestCase):
             release.wait(3)
             return original(prompt, schema)
         self.backend.generate = blocking
-        task_id = self.app.explain(PAPER, reading_request({"mode": "continue"}))
+        task_id = self.app.explain(PAPER, reading_request({"mode": "continue"}, app=self.app, paper=PAPER))
         self.assertTrue(entered.wait(2))
         try:
             with self.assertRaises(RuntimeError):
-                self.app.explain(PAPER, reading_request({"mode": "continue"}))
+                self.app.explain(PAPER, reading_request({"mode": "continue"}, app=self.app, paper=PAPER))
         finally:
             release.set()
         events = [event for event in self.app.task_events(task_id) if event]
@@ -262,7 +271,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(self.run_turn()[1], "error")
         self.assertEqual(self.backend.prompts, [])
         with self.assertRaises(ValueError):
-            self.app.explain(PAPER, reading_request({"mode": "ask", "quote": "text", "page": True}))
+            self.app.explain(PAPER, reading_request({"mode": "ask", "quote": "text", "page": True}, app=self.app, paper=PAPER))
 
 
 if __name__ == "__main__":

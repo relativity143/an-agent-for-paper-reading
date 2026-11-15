@@ -41,7 +41,7 @@ class LaunchServiceTests(unittest.TestCase):
         self.addCleanup(installed.stop)
 
     def turn(self, request=None):
-        task = self.app.explain(PAPER, reading_request(request))
+        task = self.app.explain(PAPER, reading_request(request, app=self.app, paper=PAPER))
         events = [event for event in self.app.task_events(task) if event]
         self.assertTrue(self.app.wait_closed(2))
         self.assertEqual(events[-1][1], "result", events[-1])
@@ -104,7 +104,7 @@ class LaunchServiceTests(unittest.TestCase):
             release.wait(3)
             return overview()
         self.backend.generate = generate
-        task = self.app.explain(PAPER, reading_request({"mode": "continue"}))
+        task = self.app.explain(PAPER, reading_request({"mode": "continue"}, app=self.app, paper=PAPER))
         self.assertTrue(entered.wait(2))
         before = (self.home / "config.json").read_bytes()
         try:
@@ -211,17 +211,21 @@ class LaunchServiceTests(unittest.TestCase):
     def test_close_while_generation_waits_for_file_lock_cancels_without_writing(self):
         self.turn()  # Leave the overview undisplayed so recovery would save an ask.
         original_lock = core.file_lock
-        waiting = threading.Event()
+        waiting, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
 
         def observed_lock(path, *args, **kwargs):
             if threading.current_thread().name.startswith("paperread"):
                 waiting.set()
+                release.wait(3)
             return original_lock(path, *args, **kwargs)
 
-        with original_lock(self.path / ".agent.lock"):
-            with patch.object(core, "file_lock", side_effect=observed_lock):
-                task_id = self.app.explain(PAPER, reading_request({"mode": "ask", "question": "A question before shutdown"}))
-                self.assertTrue(waiting.wait(2))
+        request = reading_request({"mode": "ask", "question": "A question before shutdown"}, app=self.app)
+        with patch.object(core, "file_lock", side_effect=observed_lock):
+            task_id = self.app.explain(PAPER, request)
+            self.assertTrue(waiting.wait(2))
+            with original_lock(self.path / ".agent.lock"):
+                release.set()
                 before = (self.path / "agent-state.json").read_bytes()
                 self.app.close(wait=False)
         self.assertTrue(self.app.wait_closed(2))
@@ -242,9 +246,9 @@ class LaunchServiceTests(unittest.TestCase):
         self.backend.generate = generate
         queued_path = self.home / "papers" / "queued-paper"
         core.write_json(queued_path / "paper.json", self.data)
-        app.explain(PAPER, reading_request({"mode": "continue"}))
+        app.explain(PAPER, reading_request({"mode": "continue"}, app=app, paper=PAPER))
         self.assertTrue(entered.wait(2))
-        task_id = app.explain("queued-paper", reading_request({"mode": "continue"}))
+        task_id = app.explain("queued-paper", reading_request({"mode": "continue"}, app=app, paper="queued-paper"))
         app.close(wait=False)
         queued = app.get_task(task_id)
         self.assertTrue(queued.done)

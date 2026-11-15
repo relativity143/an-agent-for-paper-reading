@@ -1,4 +1,4 @@
-# M1 本机后端
+# 本机后端（M1 + M2）
 
 复用 `paperread.py` 获取、解析和定位论文，通过同一组讲解规则接入 Claude Code、Codex 或兼容 Chat Completions 的模型 API。提供 HTTP、SSE、历史恢复和显示确认，所有数据留在 `PAPERREAD_HOME`（默认 `~/.paperread/`）。
 
@@ -64,14 +64,14 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 ## 前端对接
 
-启动、设置、列表与上传接口见 [首轮交付](../docs/m1-launch-delivery.md)；模型名、时限、停止与排队问题恢复见 [第二轮交付](../docs/m1-round2-delivery.md)，供 Claude 继续接页面。
+启动、设置、列表与上传接口见 [首轮交付](../docs/m1-launch-delivery.md)；模型名、时限、停止与排队问题恢复见 [第二轮交付](../docs/m1-round2-delivery.md)；概念记录、反馈、版本检查与重讲见 [M2 交付](../docs/m2-delivery.md)。
 
 主体接口见 `docs/agent-architecture.md`。实现记录见 `docs/implementation.md` 第 21–23 节。
 
 继续做浏览器联调时，先看 [给 Claude 的 M1 交接说明](../docs/claude-m1-handoff.md)，其中列出了前端待改位置、恢复流程和验收清单。
 
 1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。打开未读论文不自动生成；由读者点击“继续”开始。
-2. 每次打开论文先重新询问本次基础，也可明确选择从基础讲起。`POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue","reading_context":"本次基础与目标","reading_session":"本页随机UUID"}`，或带选中文本的 `ask`。`reading_context` 必填；背景与会话只留在本页内存，不预填旧档案。完整约定见 [每次阅读重新询问基础](../docs/fresh-reading-context.md)。
+2. 每次打开论文先说明本次基础，并确认或修改这篇论文已有的概念记录。`POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue","reading_context":"本次基础与目标","reading_session":"本页随机UUID","record_version":0}`，或带选中文本的 `ask`。`reading_context` 与当前 `record_version` 必填；版本过期返回 409，不启动模型。背景输入不自动登记到旧档案，本篇概念记录可保存并编辑，完整规则见 [M2 交付](../docs/m2-delivery.md)。
 3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字，`result` 是一个 JSON 讲解对象；每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭。
 4. **卡片成功显示后**，调用 `POST /api/papers/<paper>/explanations/<id>/displayed`，请求体 `{}`。重开历史时同样调用；重复请求幂等。只有这一步才写阅读日志及实际讲过的概念。
 5. 生成期间可 `POST /api/tasks/<task>/cancel`，请求体 `{}`；成功返回 `{task,cancelled:true}`。事件流以中文 error 结束，不保存本轮讲解，可立即重试；别的论文不受影响。已经结束的任务再次取消也成功，保留已保存结果；未知任务 404。API 断开本机连接不保证提供商立即停止计费。
@@ -80,7 +80,7 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 **前端必须接入显示回执后，继续按钮才能推进。** 缺回执时服务会恢复上一轮，避免跳过未显示的基础。`history` 是已经生成的对象列表，生成成功本身不证明已显示或已理解。
 
-`assumes`、`unexpanded` 和导读提过的词不会自动写成 `explained`；已有 `known` 和 `unsure` 也不会被覆盖。生成新讲解不读取这些旧状态：`previously` 为空，`assumes.status` 使用 `new`，以本次回答决定讲解起点。旧历史只恢复位置，同一页面内刚生成的讲解可供连续阅读使用；“讲过”仍不等于“懂了”。
+`assumes`、`unexpanded` 和导读提过的词不会自动写成 `explained`；显示回执只更新实际展开的概念，保留已有 `known/unsure` 状态。生成读取本篇最新已确认记录，`assumes.status/explained_at` 必须与记录一致，未记录概念使用 `new/null`；`previously` 仍为空。不从旧 `profile.json` 或旧日志迁移基础。“讲过”仍不等于“懂了”；最新一份逐点讲解收到 `unclear` 后，下次正常继续在原位置、原步骤换一种讲法。
 
 ## 设置、列表、提问与上传
 
@@ -99,19 +99,20 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 - `backends.py`、`config.py`：模型通信和本机配置，公开健康检查不返回密钥或路径。
 - `launcher.py`、`settings.py`、`catalog.py`：本机服务复用、设置原子切换、缓存列表。
 - `http.py`：只监听 `127.0.0.1`，检查 Host/Origin，提供 JSON、SSE、PDF 和静态文件。
-- 每篇论文新增 `agent-state.json`，保存完整讲解、待处理问题和显示回执；既有 `log.jsonl`、`profile.json`、`outline.md` 继续使用。服务记录带 `explanation_id`，用于中断后的去重。
+- `records.py`：概念记录的字段校验与状态转换，不执行文件读写。
+- 每篇论文的 `agent-state.json` 保存完整讲解、待处理问题、显示回执和 M2 概念记录；继续使用 `log.jsonl` 与 `outline.md`，不再读写旧 `profile.json`。显示与反馈使用独立去重依据；M2 状态同锁原子写入。
 
-不把自由填写的个人背景、身份或确认原话送给模型；仅发送学科层级、概念状态和相关阅读位置。论文与读者主动提交的问题会送到选定的模型后端。模型获得的数据都是材料，服务不会执行材料中的命令。
+论文、读者本次主动填写的基础和问题、本篇确认过的概念记录（含备注），以及必要的本篇旧讲法会送到选定的模型后端。不发送旧全局档案或整份日志；来源说明只取当前讲解需要的材料。模型获得的数据都是材料，服务不会执行材料中的命令。
 
 ## 当前边界
 
-- 这是后端 M1。前端显示回执、PDF 与真实阅读体验需要联调；结构校验不能证明物理正确，也不能证明补基础的教学顺序真的合格。
+- 已实现 M1 与 M2 后端。M2 页面与真实阅读体验仍需联调；结构校验不能证明物理正确，也不能证明补基础的教学顺序真的合格。
 - 全文上限为 160,000 字符，总提示上限为 260,000 字符。超过上限会明确报错，不悄悄截断后声称读过全文。模型自身的上下文限制可能更小。
 - HTML 返回正文、公式和图表标题，图片尚未交给模型。PDF 需要本机 `pdftotext` 或可选 `pypdf`，按页抽取文字。扫描件、空白/图像页及无法可靠抽取的文档会报错；不支持 OCR、图像理解或保证数学符号无损。
 - 本轮不启用外部检索工具。来源链接限定为给定论文及其参考文献中已有的链接；一般背景说明需明确未检索核验。链接存在和结构有效不能替代逐条证据核查。
 - 模型输出结构不合格时只修正一次；API 暂时性网络错误另按配置最多重试两次。不会无限重试或保存残缺对象。
 - SSE 任务保留最多约 128 项，重启后恢复持久化讲解而不是旧任务连接。每篇同时一项生成，全局最多四项等待或执行。
-- 不包含反馈界面、概念地图、旁问和文献库；现有 Skill 的第二部分仍可单独使用。
+- M2 提供反馈与概念记录接口，页面由 Claude 对接；概念地图、旁问和文献库仍未实现。现有 Skill 的第二部分仍可单独使用。
 
 ## 验证
 

@@ -304,10 +304,13 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             if method not in {"GET", "HEAD", "POST", "PUT"}:
                 raise _HTTPFailure(405, "不支持这种请求方式。")
             if method == "PUT":
-                if parts != ["api", "settings"]:
-                    raise _HTTPFailure(405, "不支持这种请求方式。")
-                self._json(200, app.update_settings(self._read_json()))
-                return
+                if parts == ["api", "settings"]:
+                    self._json(200, app.update_settings(self._read_json()))
+                    return
+                if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "record":
+                    self._json(200, app.update_record(parts[2], self._read_json()))
+                    return
+                raise _HTTPFailure(405, "不支持这种请求方式。")
             if method == "POST":
                 if parts == ["api", "papers", "upload"]:
                     self._upload_pdf()
@@ -326,6 +329,9 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                     return
                 if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "explain":
                     self._json(202, {"task": app.explain(parts[2], body)})
+                    return
+                if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "feedback":
+                    self._json(200, app.feedback(parts[2], body))
                     return
                 if len(parts) == 6 and parts[:2] == ["api", "papers"] and parts[3] == "explanations" and parts[5] == "displayed":
                     self._json(200, app.acknowledge(parts[2], parts[4]))
@@ -350,6 +356,9 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 resource = parts[3] if len(parts) == 4 else "metadata"
                 if resource == "pdf":
                     self._file(app.pdf_path(paper), "application/pdf")
+                    return
+                if resource == "record":
+                    self._json(200, app.record(paper))
                     return
                 actions = {"metadata": app.metadata, "content": app.content, "explanations": app.history}
                 if resource in actions:

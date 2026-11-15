@@ -16,7 +16,8 @@ class ReadingContextTests(unittest.TestCase):
     def turn(self, context, request=None, app=None):
         app = app or self.app
         task = app.explain(fixtures.PAPER, {**(request or {"mode": "continue"}),
-                                           "reading_context": context})
+                                           "reading_context": context,
+                                           "record_version": app.record(fixtures.PAPER)["version"]})
         events = [e for e in app.task_events(task) if e]
         self.assertTrue(app.wait_closed(2))
         return events[-1]
@@ -25,8 +26,8 @@ class ReadingContextTests(unittest.TestCase):
         return json.loads(prompt.split("本轮材料（JSON 数据）：\n", 1)[1])
 
     def test_missing_or_invalid_background_stops_before_model_or_storage(self):
-        requests = [{"mode": "continue"}] + [
-            {"mode": "continue", "reading_context": value}
+        requests = [{"mode": "continue", "record_version": 0}] + [
+            {"mode": "continue", "reading_context": value, "record_version": 0}
             for value in (None, "", " \n ", True, {}, [], "x" * 2001)
         ]
         for request in requests:
@@ -62,14 +63,15 @@ class ReadingContextTests(unittest.TestCase):
         other = Application(self.store, fixtures.FakeBackend(fixtures.point()))
         self.addCleanup(other.close)
         with self.assertRaisesRegex(ValueError, "本次阅读"):
-            other.explain(fixtures.PAPER, {"mode": "continue"})
+            other.explain(fixtures.PAPER, {"mode": "continue", "record_version": 0})
         _, kind, result = self.turn("SECOND_PRIVATE_CONTEXT", app=other)
         self.assertEqual(kind, "result")
         material = self.material(other.backend.prompts[0])
         self.assertEqual(material["reading_context"], "SECOND_PRIVATE_CONTEXT")
         self.assertEqual(material["request"], question)
         self.assertNotIn("FIRST_PRIVATE_CONTEXT", other.backend.prompts[0])
-        self.assertNotIn("reading_context", result["asked"])
+        for field in ("reading_context", "reading_session", "record_version"):
+            self.assertNotIn(field, result["asked"])
         self.assertNotIn("PRIVATE_CONTEXT", (self.path / "agent-state.json").read_text())
 
     def test_old_explanation_prose_is_excluded_but_reading_position_is_kept(self):
@@ -160,7 +162,8 @@ class ReadingContextHTTPTests(unittest.TestCase):
     request = http_fixtures.ServerIntegrationTests.request
 
     def test_http_cannot_bypass_fresh_background_question(self):
-        for body in ({"mode": "continue"}, {"mode": "ask", "question": "Explain this"}):
+        for body in ({"mode": "continue", "record_version": 0},
+                     {"mode": "ask", "question": "Explain this", "record_version": 0}):
             status, _, data = self.request("POST", f"/api/papers/{http_fixtures.PAPER}/explain", body)
             self.assertEqual(status, 400)
             self.assertIn("本次阅读", json.loads(data)["error"])
