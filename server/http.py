@@ -310,6 +310,9 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "record":
                     self._json(200, app.update_record(parts[2], self._read_json()))
                     return
+                if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "map":
+                    self._json(200, app.update_map_layout(parts[2], self._read_json()))
+                    return
                 raise _HTTPFailure(405, "不支持这种请求方式。")
             if method == "POST":
                 if parts == ["api", "papers", "upload"]:
@@ -359,6 +362,9 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                     return
                 if resource == "record":
                     self._json(200, app.record(paper))
+                    return
+                if resource == "map":
+                    self._json(200, app.map_layout(paper))
                     return
                 actions = {"metadata": app.metadata, "content": app.content, "explanations": app.history}
                 if resource in actions:

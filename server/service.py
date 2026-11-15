@@ -24,6 +24,7 @@ from .settings import public_settings, prepare_settings_change
 from .catalog import paper_catalog
 from .schema import explanation_schema, validate_explanation
 from . import records
+from . import map_layout
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "paper-foundations"
@@ -322,6 +323,38 @@ class Application:
         path, _ = self._load(paper)
         with core.file_lock(path / ".agent.lock"):
             return self._record(self._state(path))
+
+    def _map_layout(self, path):
+        target = path / "map-layout.json"
+        if target.is_symlink():
+            raise ValueError("地图位置文件不是有效的普通文件，已保留原文件。")
+        if not target.exists():
+            return map_layout.empty_layout()
+        try:
+            return map_layout.validate_saved_layout(core.read_json(target))
+        except (ValueError, core.PaperError) as error:
+            raise ValueError("地图位置文件损坏或无法读取，已保留原文件。") from error
+
+    def map_layout(self, paper):
+        path, _ = self._load(paper)
+        with core.file_lock(path / ".agent.lock"):
+            return self._map_layout(path)
+
+    def update_map_layout(self, paper, body):
+        incoming = map_layout.normalize_layout(body)
+        path, _ = self._load(paper)
+        # Shares the reading-state lock, but has its own file and version. Map
+        # edits can proceed while the model is running, without changing its input.
+        with core.file_lock(path / ".agent.lock"), self.lock:
+            if self.closed:
+                raise RuntimeError("服务正在关闭。")
+            current = self._map_layout(path)
+            if incoming["version"] != current["version"]:
+                raise RuntimeError("地图已在别处修改，请重新读取后再保存。")
+            updated = map_layout.replace_layout(current, incoming)
+            if updated != current:
+                core.write_json(path / "map-layout.json", updated)
+            return updated
 
     def _record_editable(self, paper):
         if self.closed:
