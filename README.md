@@ -4,7 +4,7 @@
 
 A physics-grounded agent that helps readers enter unfamiliar research fields by supplying the essential terminology and foundational knowledge needed to understand their papers.
 
-> **Status: first local prototype.** A Claude Code / Codex Skill, Python standard-library helper, and offline tests are available. The host agent provides explanations; the web reader and reader evaluation have not been implemented.
+> **Status: local web agent and Skill available.** The web reader connects to model backends and supports source navigation, per-paper concept records, and saved map layouts. It first explains the paper's prerequisites and their purpose, then asks readers to choose “already know / need help / unsure” before starting the guided reading. See [local setup](server/README.md) and the [opening-flow notes](docs/prerequisites-first-delivery.md). Offline and browser regressions are available; human comprehension gains have not been evaluated. The sections below retain the broader design and future plans.
 
 ## Why this project
 

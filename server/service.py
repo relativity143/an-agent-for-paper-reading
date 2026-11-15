@@ -25,6 +25,7 @@ from .catalog import paper_catalog
 from .schema import explanation_schema, validate_explanation
 from . import records
 from . import map_layout
+from . import prerequisites as prerequisite_analysis
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "paper-foundations"
@@ -356,6 +357,146 @@ class Application:
                 core.write_json(path / "map-layout.json", updated)
             return updated
 
+    def _prerequisite_fingerprint(self, path, data):
+        digest = hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        if data.get("source") in {"pdf_only", "local_pdf"}:
+            with self.pdf_path(path.name).open("rb") as stream:
+                for block in iter(lambda: stream.read(131072), b""):
+                    digest.update(block)
+        return digest.hexdigest()
+
+    def _cached_prerequisites(self, path, data, fingerprint):
+        target = path / "prerequisites.json"
+        if target.is_symlink():
+            raise ValueError("基础清单缓存不是普通文件，已保留原文件。")
+        if not target.exists():
+            return None
+        try:
+            cached = core.read_json(target)
+            if (not isinstance(cached, dict) or set(cached) != {"format", "source", "pages", "items"}
+                    or type(cached["format"]) is not int or cached["format"] != 1
+                    or not isinstance(cached["source"], str)):
+                raise ValueError("Invalid prerequisite cache")
+            if cached["source"] != fingerprint:
+                return None
+            pages = cached["pages"]
+            pdf = data.get("source") in {"pdf_only", "local_pdf"}
+            if (pdf and (type(pages) is not int or pages < 1)) or (not pdf and pages is not None):
+                raise ValueError("Invalid cached page count")
+            validated = prerequisite_analysis.validate({"items": cached["items"]},
+                                                       valid_ids=source_ids(data), pages=pages)
+            return {"paper": path.name, "ready": True, "items": validated["items"]}
+        except (ValueError, core.PaperError) as error:
+            raise ValueError("本文基础清单缓存损坏，已保留原文件；可以重新分析。") from error
+
+    def prerequisites(self, paper):
+        path, _ = self._load(paper)
+        with core.file_lock(path / ".agent.lock"):
+            _, data = self._load(path.name)
+            fingerprint = self._prerequisite_fingerprint(path, data)
+            return (self._cached_prerequisites(path, data, fingerprint)
+                    or {"paper": path.name, "ready": False, "items": []})
+
+    def _check_task_capacity(self, paper):
+        if self.closed:
+            raise RuntimeError("服务正在关闭。")
+        self._prune_active()
+        if paper in self.active:
+            raise RuntimeError("这篇论文已有一轮讲解或基础分析正在生成。")
+        if len(self.active) >= 4:
+            raise RuntimeError("当前生成任务已满，请稍后重试。")
+
+    def _submit_task(self, path, runner, *args):
+        # Called with self.lock held. Both task types share cancellation and capacity.
+        for key in list(self.tasks):
+            if len(self.tasks) < 128:
+                break
+            if self.tasks[key].done and not self.tasks[key].cleanup_pending:
+                del self.tasks[key]
+        task = Task(path.name)
+        self.tasks[task.id] = task
+        self.active[path.name] = task.id
+        future = self.pool.submit(runner, task, path, *args)
+        task.future = future
+        self.futures.add(future)
+        future.add_done_callback(lambda completed: self._forget_future(completed, task))
+        return task.id
+
+    def prepare_prerequisites(self, paper):
+        path, _ = self._load(paper)
+        with core.file_lock(path / ".agent.lock"), self.lock:
+            self._check_task_capacity(path.name)
+            return self._submit_task(path, self._prepare_prerequisites)
+
+    def _prepare_prerequisites(self, task, path):
+        with cancellation_context(task.cancellation):
+            try:
+                with core.file_lock(path / ".agent.lock"), self.lock:
+                    task.cancellation.check()
+                    if self.closed:
+                        raise ValueError("服务正在关闭，本轮已取消。")
+                    backend = self.backend
+                    # A queued task must not match a cache against an old source
+                    # snapshot captured before the worker acquired its lock.
+                    _, data = self._load(path.name)
+                    fingerprint = self._prerequisite_fingerprint(path, data)
+                    if (path / "prerequisites.json").is_symlink():
+                        raise ValueError("基础清单缓存不是普通文件，已保留原文件。")
+                    try:
+                        cached = self._cached_prerequisites(path, data, fingerprint)
+                    except ValueError:
+                        # An explicit analysis request may rebuild a damaged derived
+                        # cache; preserve the old bytes until a valid result is ready.
+                        cached = None
+                    if cached:
+                        task.emit("result", cached)
+                        return
+                task.emit("status", "先通读论文，整理必要基础和它们在本文中的用途。")
+                if data.get("source") in {"pdf_only", "local_pdf"}:
+                    text, pages = extract_pdf(self.pdf_path(path.name))
+                else:
+                    text, pages = core.paper_text(data), None
+                if len(text) > MAX_PAPER_CHARS:
+                    raise ValueError("论文超过全文上下文上限，尚未分析基础。")
+                prompt = prerequisite_analysis.prompt(paper=path.name, title=data.get("title", ""), text=text,
+                    source_url=public_source_url(data), pages=pages, valid_ids=sorted(source_ids(data)))
+                if len(prompt) > MAX_PROMPT_CHARS:
+                    raise ValueError("论文超过上下文上限，尚未分析基础。")
+                for attempt in range(2):
+                    task.cancellation.check()
+                    if len(prompt) > MAX_PROMPT_CHARS:
+                        raise ValueError("基础清单修正超过上下文上限，本轮未保存。")
+                    raw = backend.generate(prompt, prerequisite_analysis.schema())
+                    task.cancellation.check()
+                    try:
+                        result = prerequisite_analysis.validate(raw, valid_ids=source_ids(data), pages=pages)
+                        break
+                    except ValueError as error:
+                        if attempt:
+                            raise ValueError("模型两次返回的基础清单缺项或无法定位，本轮未保存。") from error
+                        prompt += "\n上次基础清单校验未通过：" + str(error) + "。请按原文修正，返回完整对象。"
+                        task.emit("status", "基础清单不完整，正在修正一次。")
+                with core.file_lock(path / ".agent.lock"), self.lock:
+                    task.cancellation.check()
+                    if self.closed:
+                        raise ValueError("服务正在关闭，本轮已取消。")
+                    _, latest_data = self._load(path.name)
+                    if self._prerequisite_fingerprint(path, latest_data) != fingerprint:
+                        raise ValueError("论文原文在分析期间发生变化，请重新分析基础。")
+                    core.write_json(path / "prerequisites.json", {"format": 1, "source": fingerprint,
+                                                               "pages": pages, "items": result["items"]})
+                    task.emit("result", {"paper": path.name, "ready": True, "items": result["items"]})
+            except ValueError as error:
+                self._generation_error(task, str(error))
+            except BackendError as error:
+                self._generation_error(task, "模型后端未完成基础分析：" + str(error))
+            except Exception:
+                self._generation_error(task, "基础分析失败，请检查模型连接；已有阅读记录已保留。")
+            finally:
+                with self.lock:
+                    if self.active.get(path.name) == task.id and not task.cleanup_pending:
+                        self.active.pop(path.name, None)
+
     def _record_editable(self, paper):
         if self.closed:
             raise RuntimeError("服务正在关闭。")
@@ -475,13 +616,7 @@ class Application:
         path, data = self._load(paper)
         request = self._request(request, data)
         with core.file_lock(path / ".agent.lock"), self.lock:
-            if self.closed:
-                raise RuntimeError("服务正在关闭。")
-            self._prune_active()
-            if path.name in self.active:
-                raise RuntimeError("这篇论文已有一轮讲解正在生成。")
-            if len(self.active) >= 4:
-                raise RuntimeError("当前生成任务已满，请稍后重试。")
+            self._check_task_capacity(path.name)
             state = self._state(path)
             if self._record(state)["version"] != request["record_version"]:
                 raise RuntimeError("概念记录已更新，请重新读取并确认后再生成讲解。")
@@ -490,20 +625,7 @@ class Application:
                 generated_version = state.get("explanation_record_versions", {}).get(last_id, 0)
                 if generated_version != request["record_version"]:
                     raise RuntimeError("上一轮未确认显示的讲解使用了旧概念记录；请先恢复历史并确认显示，再读取记录继续。")
-            # Completed tasks are bounded; persistent explanations survive eviction.
-            for key in list(self.tasks):
-                if len(self.tasks) < 128:
-                    break
-                if self.tasks[key].done and not self.tasks[key].cleanup_pending:
-                    del self.tasks[key]
-            task = Task(path.name)
-            self.tasks[task.id] = task
-            self.active[path.name] = task.id
-            future = self.pool.submit(self._generate, task, path, data, request)
-            task.future = future
-            self.futures.add(future)
-            future.add_done_callback(lambda completed: self._forget_future(completed, task))
-            return task.id
+            return self._submit_task(path, self._generate, data, request)
 
     def _forget_future(self, future, task):
         with self.lock:

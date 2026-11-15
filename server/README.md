@@ -72,9 +72,9 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 继续做浏览器联调时，先看 [给 Claude 的 M1 交接说明](../docs/claude-m1-handoff.md)，其中列出了前端待改位置、恢复流程和验收清单。
 
-1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。打开未读论文不自动生成；由读者点击“继续”开始。
-2. 每次打开论文先说明本次基础，并确认或修改这篇论文已有的概念记录。`POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue","reading_context":"本次基础与目标","reading_session":"本页随机UUID","record_version":0}`，或带选中文本的 `ask`。`reading_context` 与当前 `record_version` 必填；版本过期返回 409，不启动模型。背景输入不自动登记到旧档案，本篇概念记录可保存并编辑，完整规则见 [M2 交付](../docs/m2-delivery.md)。
-3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字，`result` 是一个 JSON 讲解对象；每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭。
+1. `POST /api/papers` 打开论文，随后读取 `/content`、`/explanations` 和 `/prerequisites`。尚无基础清单时，读者点击“先看看需要哪些基础”，向 `/prerequisites` 提交空对象并通过 SSE 获取清单。已有清单可以复用，打开页面不自动调用模型。
+2. 先展示每项基础是什么、本文如何用到，再请读者选择“已经会／需要补／不确定”。选择保存到本篇概念记录，清单外旧记录另行确认，每次重新打开都重新选择。随后 `POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue","reading_context":"本次选择与目标","reading_session":"本页随机UUID","record_version":0}`，或带选中文本的 `ask`。`reading_context` 与当前 `record_version` 必填；版本过期返回 409，不启动模型。基础分析不读取旧档案和记录，清单不算已经讲过。详见 [开场流程](../docs/prerequisites-first-delivery.md) 与 [M2 交付](../docs/m2-delivery.md)。
+3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字；`result` 对基础分析是 `{paper,ready,items}`，对 `explain` 是 JSON 讲解对象。每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭；基础清单不发送显示回执。
 4. **卡片成功显示后**，调用 `POST /api/papers/<paper>/explanations/<id>/displayed`，请求体 `{}`。重开历史时同样调用；重复请求幂等。只有这一步才写阅读日志及实际讲过的概念。
 5. 生成期间可 `POST /api/tasks/<task>/cancel`，请求体 `{}`；成功返回 `{task,cancelled:true}`。事件流以中文 error 结束，不保存本轮讲解，可立即重试；别的论文不受影响。已经结束的任务再次取消也成功，保留已保存结果；未知任务 404。API 断开本机连接不保证提供商立即停止计费。
 

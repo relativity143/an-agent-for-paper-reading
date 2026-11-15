@@ -92,6 +92,13 @@ function realApi(health) {
       }
     },
     saveRecord: (paper, version, concepts) => sendJson('PUT', `${paperUrl(paper)}/record`, { version, concepts }),
+    // 本文基础分析独立于讲解：不携带读者背景、记录版本，也不发送显示回执。
+    getPrerequisites: (paper) => getJson(`${paperUrl(paper)}/prerequisites`),
+    async preparePrerequisites(paper, onStatus, onTask) {
+      const { task } = await postJson(`${paperUrl(paper)}/prerequisites`, {});
+      if (onTask) onTask(task);
+      return watchTask(`${base}/tasks/${encodeURIComponent(task)}/events`, onStatus);
+    },
     sendFeedback: (paper, feedback) => postJson(`${paperUrl(paper)}/feedback`, feedback),
     // 概念地图的位置和批注（4.8 节）。后端还没有这个接口时返回 null，页面改存在浏览器里。
     async getMap(paper) {

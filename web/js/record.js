@@ -46,6 +46,9 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
   const confirmBox = document.getElementById('record-confirm');
   let record = null;     // null：后端没有这个功能，或者还没读到
   let confirmed = true;  // 打开时记录不为空，要先确认
+  let gateVisible = true, conflict = false;
+  let chosenNames = new Set();
+  const chosenRows = () => record.concepts.filter((c) => chosenNames.has(c.name.toLowerCase())).map((c) => ({ name: c.name, status: c.status, note: c.note || null }));
 
   const supported = () => record !== null;
 
@@ -63,11 +66,11 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
   }
 
   // 记录的编辑区：对话框和打开时的确认用同一份。返回 { root, rows() }。
-  function editor() {
+  function editor(excluded = new Set()) {
     const root = el('div', 'record-editor');
     const list = el('ul', 'record-list');
     const empty = el('p', 'hint', '还没有记录。每讲完一轮，讲过的概念会自动记在这里。');
-    const draft = record.concepts.map((c) => ({ name: c.name, status: c.status, note: c.note || '', where: c.where || null }));
+    const draft = record.concepts.filter((c) => !excluded.has(c.name.toLowerCase())).map((c) => ({ name: c.name, status: c.status, note: c.note || '', where: c.where || null }));
 
     function row(item) {
       const li = el('li', 'record-item');
@@ -119,6 +122,7 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
       event.preventDefault();
       const text = name.value.trim();
       if (!text) return;
+      if (excluded.has(text.toLowerCase())) { addNote.textContent = '这项已在本次基础中确认，请通过“修改本次基础”调整。'; return; }
       const same = draft.find((item) => item.name.toLowerCase() === text.toLowerCase());
       if (same) {
         same.status = status.value;
@@ -189,29 +193,30 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
 
   // 打开论文时：记录不是空的，先摆出来让读者确认。
   function showConfirm() {
-    confirmBox.hidden = confirmed;
+    confirmBox.hidden = confirmed || (!gateVisible && !conflict);
     if (confirmed) { confirmBox.replaceChildren(); return; }
-    const view = editor();
+    const view = editor(chosenNames);
     const status = el('p', 'status');
     status.setAttribute('role', 'status');
     const keep = el('button', 'btn btn-primary', '按这份记录继续');
     keep.type = 'button';
-    const clear = el('button', 'btn', '清空，从头开始');
+    const clear = el('button', 'btn', chosenNames.size ? '清空其余旧记录' : '清空，从头开始');
     clear.type = 'button';
-    const done = () => { confirmed = true; showConfirm(); onChange(); };
+    const done = () => { confirmed = true; conflict = false; showConfirm(); onChange(); };
     keep.addEventListener('click', async () => {
-      const rows = view.rows();
+      if (busy()) { status.textContent = '正在处理本次请求，请稍后再确认记录。'; return; }
+      const rows = [...chosenRows(), ...view.rows()];
       if (!changed(rows) || await save(rows, status)) done();
       else if (status.textContent.startsWith('记录在别处')) showConfirm();
     });
     clear.addEventListener('click', async () => {
-      if (await save([], status)) done();
+      if (await save(chosenRows(), status)) done();
     });
     const actions = el('div', 'record-confirm-actions');
     actions.append(keep, clear);
     confirmBox.replaceChildren(
       el('h2', '', '上次读这篇时的记录'),
-      el('p', 'hint', '讲解会按这份记录来讲。先看一遍：已经会了的改成“已经会”，其实没懂的改成“还不懂”，不想要的删掉。确认之后才会使用。'),
+      el('p', 'hint', chosenNames.size ? '这些是本次基础清单以外的旧记录，请另行核对后确认。刚才选过的基础会保留。' : '讲解会按这份记录来讲。先看一遍：已经会了的改成“已经会”，其实没懂的改成“还不懂”，不想要的删掉。确认之后才会使用。'),
       view.root, actions, status,
     );
   }
@@ -225,6 +230,8 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
   async function load() {
     record = null;
     confirmed = true;
+    chosenNames = new Set();
+    conflict = false;
     const source = api();
     if (source && source.getRecord) {
       try { adopt(await source.getRecord(paper())); } catch { record = null; }
@@ -233,6 +240,40 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
     showButton();
     showConfirm();
     onChange();
+  }
+
+  // 只改变明确选择过的本文基础；其他条目与原来源由完整列表及后端共同保留。
+  async function applyPrerequisites(choices) {
+    if (!supported()) throw new Error('概念记录暂时无法读取，请重新打开论文后再确认。');
+    const rows = record.concepts.map((c) => ({ name: c.name, status: c.status, note: c.note || null }));
+    for (const { name, choice } of choices) {
+      let row = rows.find((c) => c.name.toLowerCase() === name.toLowerCase());
+      if (!row) { row = { name, status: 'unsure', note: null }; rows.push(row); }
+      row.status = choice === 'known' ? 'known' : 'unsure';
+      const label = { known: '已经会', basics: '需要补', unsure: '不确定' }[choice];
+      const marker = `本次基础自评：${label}`;
+      const previous = (row.note || '').replace(/(?:\n|^)本次基础自评：(?:已经会|需要补|不确定)/g, '').trim();
+      row.note = previous ? `${Array.from(previous).slice(0, MAX_NOTE - marker.length - 1).join('')}\n${marker}` : marker;
+    }
+    try {
+      adopt(await api().saveRecord(paper(), record.version, rows));
+      chosenNames = new Set(choices.map((c) => c.name.toLowerCase()));
+      if (!record.concepts.some((c) => !chosenNames.has(c.name.toLowerCase()))) confirmed = true;
+      conflict = false;
+      showConfirm();
+      onChange();
+    } catch (error) {
+      if (error.status === 409) {
+        await load();
+        if (!supported()) throw new Error('记录已改变，但最新记录暂时无法读取。本次选择没有保存，请重新打开论文后再试。');
+        conflict = true;
+        confirmed = false;
+        showConfirm();
+        onChange();
+        throw new Error('记录已在别处修改，本次选择没有保存。请核对下方最新记录，再重新确认本次基础。');
+      }
+      throw error;
+    }
   }
 
   // 讲解卡片下面的反馈：还是不懂、卡在这个词、这个我会。isLatest() 说明这张卡片是不是最新的一轮。
@@ -325,6 +366,11 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
     reconfirm: load,
     refresh,
     supported,
+    applyPrerequisites,
+    setGateVisible(value) {
+      gateVisible = value;
+      confirmBox.hidden = confirmed || (!gateVisible && !conflict);
+    },
     ready: () => !supported() || confirmed,
     // 请求讲解时带上读者确认过的记录版本。
     withRequest: (request) => (supported() ? { ...request, record_version: record.version } : request),

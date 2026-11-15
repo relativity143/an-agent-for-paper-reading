@@ -57,7 +57,16 @@ function fitQuestion() {
   els.question.style.height = 'auto';
   els.question.style.height = `${Math.min(els.question.scrollHeight + 2, 168)}px`;
 }
-const readingContext = createReadingContext($('reading-context'), refreshButtons);
+const readingContext = createReadingContext($('reading-context'), {
+  api: () => state.api, paper: () => state.paper, setBusy,
+  saveChoices: (choices) => record.applyPrerequisites(choices), onChange: refreshButtons,
+  jump(where) {
+    layoutView.showPaper();
+    // 清单可引用句子 S1.p1.s1；阅读页的定位元素是父段落，引用原句仍用于高亮。
+    const ids = where.ids.map((id) => paperView.resolve(id)?.id || id.replace(/\.s\d+$/, ''));
+    paperView.highlight([{ ...where, ids }]);
+  },
+});
 // 概念记录与反馈（4.7 节）。位置文字认得出来时，点一下让左边的原文跳过去。
 const record = createRecord({
   api: () => state.api,
@@ -98,9 +107,10 @@ function hasQuestionInput() {
 
 // “继续”要等上一轮的显示状态记好之后才放开，否则后端会重复返回同一轮。
 function refreshButtons() {
+  record.setGateVisible(readingContext.ready());
   const blocked = state.busy || !state.paper || state.unacked.size > 0 || !readingContext.ready() || !record.ready();
   els.continueBtn.disabled = blocked || state.ended;
-  els.continueBtn.title = !readingContext.ready() ? '先确认本次阅读的基础。'
+  els.continueBtn.title = !readingContext.ready() ? '先查看本文所需基础，再确认哪些已经会、哪些需要补。'
     : !record.ready() ? '先确认上次读这篇时的记录。'
       : state.ended ? '主线已经讲完，可以继续提问。' : '';
   els.askBtn.disabled = blocked || !hasQuestionInput();
@@ -592,7 +602,11 @@ function bindEvents() {
   els.paperPane.addEventListener('scroll', hideAsk, { passive: true });
   // 从浏览器的前进/后退缓存返回也算重新打开，不能复用上次确认。
   window.addEventListener('pageshow', (event) => {
-    if (event.persisted && state.api?.mode === 'live' && state.paper) readingContext.reset(true);
+    if (event.persisted && state.api?.mode === 'live' && state.paper) {
+      readingContext.reset(true);
+      readingContext.load();
+      record.load();
+    }
   });
   document.addEventListener('mousedown', (event) => {
     if (event.target !== els.askSelection && !els.paper.contains(event.target)) hideAsk();
@@ -660,6 +674,7 @@ async function start() {
     readingContext.reset(manager.live);
     // 上次的概念记录：不是空的就先摆出来，确认之后才能继续。
     await record.load();
+    await readingContext.load();
     mapView.sync();
     const content = await state.api.getContent(state.paper);
     // PDF 的正文接口只给出文件地址，标题和作者取自论文信息。
@@ -686,7 +701,7 @@ async function start() {
     if (!history.length) {
       if (manager.live) {
         // 不自动开始：生成导读要调用模型，要等一两分钟，期间也换不了后端。让读者自己点。
-        const start = noteCard('这篇论文还没有读过。点“继续”，先生成全文导读；长论文可能要等一到三分钟。用的是右上角显示的模型后端，想换的话先点它。');
+        const start = noteCard('先查看本文需要哪些基础，再选择已经会的和需要补的。确认后点“继续”生成全文导读；模型可在右上角选择。');
         start.classList.add('card-start');
         els.cards.append(start);
       } else {

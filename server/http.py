@@ -333,6 +333,11 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "explain":
                     self._json(202, {"task": app.explain(parts[2], body)})
                     return
+                if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "prerequisites":
+                    if body:
+                        raise _HTTPFailure(400, "基础清单请求只接受空对象 {}。")
+                    self._json(202, {"task": app.prepare_prerequisites(parts[2])})
+                    return
                 if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "feedback":
                     self._json(200, app.feedback(parts[2], body))
                     return
@@ -365,6 +370,9 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                     return
                 if resource == "map":
                     self._json(200, app.map_layout(paper))
+                    return
+                if resource == "prerequisites":
+                    self._json(200, app.prerequisites(paper))
                     return
                 actions = {"metadata": app.metadata, "content": app.content, "explanations": app.history}
                 if resource in actions:

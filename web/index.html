@@ -37,18 +37,26 @@
   <div id="divider" class="divider" role="separator" aria-orientation="vertical" aria-label="拖动调整两边的宽度，双击恢复默认" aria-valuemin="25" aria-valuemax="75" tabindex="0"></div>
 
   <section class="pane agent-pane" aria-label="讲解">
+    <div class="reading-preparation">
     <section id="reading-context" class="reading-context" aria-labelledby="reading-context-heading" hidden>
       <div data-context-editor>
-        <h2 id="reading-context-heading">这次从什么基础开始？</h2>
-        <label for="reading-context-input">你学过哪些相关知识？哪些还不熟悉？这次想读懂什么？</label>
-        <textarea id="reading-context-input" data-context-input rows="3" maxlength="2000" autocomplete="off" aria-describedby="reading-context-hint reading-context-error" placeholder="例如：学过线性代数，量子力学还不熟悉；这次想先看懂论文的问题和主要结论。"></textarea>
-        <p id="reading-context-hint" class="hint">只用于本次阅读，重新打开会再问。确认后点“继续”开始讲解；现在也可以查看历史、换论文或选模型。</p>
-        <p id="reading-context-error" data-context-error class="reading-context-error" role="alert"></p>
-        <div class="reading-context-actions">
-          <button type="button" data-context-confirm class="btn btn-primary">按这些基础开始</button>
-          <button type="button" data-context-zero class="btn">从基础讲起</button>
-          <button type="button" data-context-cancel class="btn btn-small" hidden>取消修改</button>
+        <h2 id="reading-context-heading">读这篇论文需要哪些基础？</h2>
+        <p class="hint">先根据本文列出必需的知识，再由你选择已经会的和需要补的。开始前可以在右上角选模型。</p>
+        <button type="button" data-context-prepare class="btn btn-primary">先看看需要哪些基础</button>
+        <p data-context-progress class="status" role="status"></p>
+        <button type="button" data-context-stop class="btn btn-small" hidden>停止分析</button>
+        <div data-context-choices hidden>
+          <p id="reading-context-hint" class="hint">每项都可以选“不确定”。清单本身不会记成“讲过”或“已经会”；确认后保存你的选择，重新打开会再问。</p>
+          <div data-context-list class="prerequisite-list"></div>
+          <label for="reading-context-input">这次想读懂什么？（可不填）</label>
+          <textarea id="reading-context-input" data-context-input rows="2" maxlength="2000" autocomplete="off" aria-describedby="reading-context-hint reading-context-error" placeholder="例如：先理解主要结论，再看必要推导。"></textarea>
+          <div class="reading-context-actions">
+            <button type="button" data-context-confirm class="btn btn-primary">确认本次选择</button>
+            <button type="button" data-context-zero class="btn">全部从基础讲起</button>
+            <button type="button" data-context-cancel class="btn btn-small" hidden>取消修改</button>
+          </div>
         </div>
+        <p id="reading-context-error" data-context-error class="reading-context-error" role="alert"></p>
       </div>
       <div data-context-summary class="reading-context-summary" hidden>
         <p data-context-description></p>
@@ -56,6 +64,7 @@
       </div>
     </section>
     <section id="record-confirm" class="record-confirm" aria-label="上次读这篇时的记录" hidden></section>
+    </div>
     <div id="cards" class="cards" aria-live="polite"></div>
 
     <form id="composer" class="composer">
