@@ -53,9 +53,10 @@ def html_paper_json(core):
         elif block["type"] == "figure":
             data["figures"].append({"id": block["id"], "caption": block["caption"], "subcaptions": [],
                                     "section": block["section"], "order": order})
-    # 样例讲解引用的外部来源要出现在参考文献里，后端才接受。
-    data["references"].append({"id": "bib.fixture1", "label": "[1]", "text": "固定样例的参考文献条目。",
-                               "links": ["https://arxiv.org/html/1509.02295v1"]})
+    # 样例正文不带参考文献。讲解引用的外部来源要出现在参考文献里，后端才接受，这里补上那一条。
+    data["references"].append({"id": "bib.bib9", "label": "[3]",
+                               "text": "J. K. Asbóth, L. Oroszlány, and A. Pályi (2016) A short course on topological insulators.",
+                               "links": ["https://dx.doi.org/10.1007/978-3-319-25607-8"]})
     return data
 
 
@@ -65,9 +66,6 @@ def html_script(backend_error):
     overview, first, second = (copy.deepcopy(x) for x in mock["explanations"])
     # 步骤名里放进引号和尖括号，检查页面只把它当文字显示。
     overview["route"]["steps"][2]["name"] = '单杂质基线 <b>"x"</b>'
-    # 后端要求每一轮讲的就是上一轮说的“接下来”的位置。
-    overview["next"]["where"] = copy.deepcopy(first["where"])
-    overview["next"]["where"]["quote"] = None
     # 读者档案是空的，除了上一轮实际讲过的概念，其余都只能标成“这一轮补”。
     for assumption in second["assumes"]:
         if assumption["status"] == "unsure":
