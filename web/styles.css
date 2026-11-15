@@ -220,6 +220,17 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 .route-name { flex: 1; }
 .route-range { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
 
+.card-note { border-style: dashed; box-shadow: none; color: var(--ink-soft); }
+.pill-other { border-style: dotted; }
+.btn-small { min-height: 36px; padding: 0 14px; font-size: 13.5px; }
+.card-error .btn-small { margin-top: 8px; border-color: var(--accent); color: var(--accent-ink); }
+.receipt-warning {
+  display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 12px;
+  border: 1px solid var(--accent); border-radius: 4px; color: var(--accent-ink); font-size: 13.5px;
+}
+.receipt-warning span { flex: 1; }
+.open-form { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; cursor: default; }
+.open-form label { display: flex; flex-direction: column; gap: 6px; width: 100%; font-weight: 600; }
 .card-pending { border-style: dashed; color: var(--ink-soft); box-shadow: none; }
 .card-error { border-color: var(--accent); color: var(--accent-ink); box-shadow: none; }
 .card-question { align-self: flex-end; max-width: 88%; background: var(--panel-bg); box-shadow: none; }
@@ -235,6 +246,14 @@ mark { background: transparent; color: inherit; text-decoration: underline; text
 .composer textarea {
   width: 100%; resize: vertical; min-height: 44px; padding: 8px 10px; border: 1px solid var(--ink-soft); border-radius: 4px;
   background: var(--card-bg); color: var(--ink); font: inherit;
+}
+.pdf-fields { display: flex; gap: 10px; align-items: flex-end; }
+.pdf-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.pdf-fields .pdf-page { flex: none; width: 84px; }
+.pdf-fields .pdf-quote { flex: 1; min-width: 0; }
+.pdf-fields input, .open-form input {
+  min-height: 38px; padding: 6px 10px; border: 1px solid var(--ink-soft); border-radius: 4px;
+  background: var(--card-bg); color: var(--ink); font: inherit; font-weight: 400;
 }
 .composer-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .btn {

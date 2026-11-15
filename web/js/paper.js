@@ -82,9 +82,9 @@ export function createPaperView(root, scroller) {
   // highlights: [{ids, quote, label}]；返回第一个标出来的元素。
   function highlight(highlights, { scroll = true } = {}) {
     if (content && content.pdf) {
+      // PDF 只能定位到页，不在原文上画高亮。
       const page = (highlights || []).map((h) => h.page).find(Boolean);
-      const frame = root.querySelector('iframe.pdf');
-      if (page && frame && scroll) frame.src = `${content.pdf}#page=${Number(page)}`;
+      if (page && scroll) gotoPage(page);
       return null;
     }
     clearHighlights();
@@ -108,6 +108,21 @@ export function createPaperView(root, scroller) {
     }
     if (first && scroll) scrollTo(first);
     return first;
+  }
+
+  // 浏览器自带的 PDF 阅读器按 #page=N 跳页。换一个地址才会真的跳，所以带上序号。
+  let pageJumps = 0;
+  function gotoPage(page) {
+    const n = Number(page);
+    const frame = root.querySelector('iframe.pdf');
+    if (!frame || !content || !content.pdf || !Number.isInteger(n) || n < 1) return false;
+    pageJumps += 1;
+    frame.src = `${content.pdf}?jump=${pageJumps}#page=${n}`;
+    return true;
+  }
+
+  function isPdf() {
+    return Boolean(content && content.pdf);
   }
 
   function scrollTo(el) {
@@ -136,10 +151,11 @@ export function createPaperView(root, scroller) {
     if (text.length < 3) return null;
     let node = range.startContainer;
     if (node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
-    const holder = node && node.closest('[data-id]');
+    // 只认段落、公式和图：后端只接受这些位置编号。
+    const holder = node && node.closest('.para, .eq, .fig');
     if (!holder) return null;
     return { quote: text.slice(0, 600), where: holder.dataset.id, rect: range.getBoundingClientRect() };
   }
 
-  return { render, highlight, flash, selection };
+  return { render, highlight, flash, selection, gotoPage, isPdf };
 }

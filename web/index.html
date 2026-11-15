@@ -35,6 +35,14 @@
         <span id="quote-text" class="quote-text"></span>
         <button type="button" id="quote-clear" class="icon-btn" aria-label="取消选中的原文">×</button>
       </div>
+      <div id="pdf-fields" class="pdf-fields" hidden>
+        <label class="pdf-page">页码
+          <input id="pdf-page" type="number" min="1" step="1" inputmode="numeric" placeholder="如 3">
+        </label>
+        <label class="pdf-quote">原文片段
+          <input id="pdf-quote" type="text" placeholder="把想问的那句原文粘贴到这里" autocomplete="off">
+        </label>
+      </div>
       <label class="sr-only" for="question">想问的问题</label>
       <textarea id="question" rows="2" placeholder="可以在左边选中一段原文再提问，也可以直接写问题。"></textarea>
       <div class="composer-actions">
