@@ -310,7 +310,7 @@ class BackendCancellationTests(unittest.TestCase):
             closed = CLIBackend(config, "claude")
             other = CLIBackend(config, "claude")
             closed.close()
-            with self.assertRaisesRegex(BackendError, "cancelled"):
+            with self.assertRaisesRegex(BackendError, "已停止这一轮"):
                 closed.generate("prompt", {})
             self.assertEqual(other._run_cli([sys.executable, "-c", "print('ok')"], "", config.home, 3), b"ok\n")
             other.close()

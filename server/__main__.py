@@ -6,7 +6,8 @@ import signal
 
 from .backends import backend_summary, create_backend
 from .config import ConfigError, load_config
-from .launcher import DEFAULT_PORT, bind_server, existing_service, open_page
+from .launcher import (DEFAULT_PORT, bind_server, find_existing_service, open_page,
+                       publish_service, remove_service)
 from .service import Application, core
 
 
@@ -17,17 +18,23 @@ def main(argv=None, *, allow_force_exit=False):
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1–65535 之间。")
-    existing = existing_service(args.port)
-    if existing is not None:
-        url = f"http://127.0.0.1:{args.port}"
+    home = Path(os.environ.get("PAPERREAD_HOME", "~/.paperread")).expanduser().resolve()
+
+    def reuse_service():
+        existing = find_existing_service(home, args.port, allow_legacy="PAPERREAD_HOME" not in os.environ)
+        if existing is None:
+            return False
+        url, info = existing
         print(f"论文阅读服务已在运行：{url}", flush=True)
-        print(f"当前模型后端：{existing['backend']}", flush=True)
+        print(f"当前模型后端：{info['backend']}", flush=True)
         print("如需停止，请关闭原来的服务窗口，或在原窗口按 Ctrl+C。", flush=True)
         if args.open:
             open_page(url)
+        return True
+
+    if reuse_service():
         return 0
 
-    home = Path(os.environ.get("PAPERREAD_HOME", "~/.paperread")).expanduser().resolve()
     stop_signals = [signal.SIGINT, signal.SIGTERM]
     if hasattr(signal, "SIGHUP"):
         stop_signals.append(signal.SIGHUP)
@@ -38,7 +45,7 @@ def main(argv=None, *, allow_force_exit=False):
 
     for number in stop_signals:
         signal.signal(number, stop)
-    app = server = None
+    app = server = record = None
     finished = True
     status = 0
     try:
@@ -49,6 +56,7 @@ def main(argv=None, *, allow_force_exit=False):
             try:
                 app = Application(core.Store(home), create_backend(config), backend_info=info, config=config)
                 server = bind_server(app, args.port)
+                record = publish_service(server, home)
                 url = f"http://127.0.0.1:{server.server_port}"
                 print(f"论文阅读服务已启动：{url}", flush=True)
                 print(f"当前模型后端：{config.backend}", flush=True)
@@ -61,19 +69,25 @@ def main(argv=None, *, allow_force_exit=False):
                 # owned-process cleanup before honoring another stop request.
                 for number in stop_signals:
                     signal.signal(number, signal.SIG_IGN)
-                if server is not None:
-                    server.server_close()
-                if app is not None:
-                    app.close(wait=False)
-                    finished = app.wait_closed(timeout=3)
+                try:
+                    if server is not None:
+                        server.server_close()
+                    if app is not None:
+                        app.close(wait=False)
+                        finished = app.wait_closed(timeout=3)
+                finally:
+                    remove_service(home, record)
     except KeyboardInterrupt:
         pass
     except ConfigError as error:
         print(f"配置错误：{error}", flush=True)
         status = 1
     except (core.PaperError, OSError):
-        print("无法启动服务。请检查同一数据目录是否已有服务运行，以及目录是否可写。", flush=True)
-        status = 1
+        # Another double-click may have acquired the lock between discovery
+        # and startup. It has now had time to publish its reserved address.
+        if not reuse_service():
+            print("无法启动服务。请检查同一数据目录是否已有服务运行，以及目录是否可写。", flush=True)
+            status = 1
     finally:
         for number, handler in previous.items():
             signal.signal(number, handler)

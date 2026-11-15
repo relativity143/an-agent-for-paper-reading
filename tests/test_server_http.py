@@ -246,7 +246,7 @@ class HttpTests(unittest.TestCase):
         (self.web / "index.html").unlink()
         status, _, body = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertIn(b"server is running", body)
+        self.assertIn("服务已启动".encode("utf-8"), body)
         self.assertNotIn(str(self.web).encode(), body)
 
     def test_error_mapping_hides_unexpected_details_and_request_logs(self):

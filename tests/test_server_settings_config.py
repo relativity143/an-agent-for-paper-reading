@@ -42,13 +42,16 @@ class SettingsConfigTests(unittest.TestCase):
         with mock.patch.object(backends.subprocess, "Popen", side_effect=AssertionError("model process")), \
                 mock.patch.object(backends.request, "urlopen", side_effect=AssertionError("network request")):
             public = settings.public_settings(load_config(self.home))
-        self.assertEqual(set(public), {"backend", "backends", "api"})
+        self.assertEqual(set(public), {"backend", "backends", "api", "timeout_seconds"})
         self.assertEqual(public["backend"], "api")
         self.assertEqual(public["api"], {"base_url": "https://example.org/v1", "model": "test-model",
                                          "key_configured": True})
         self.assertEqual([item["name"] for item in public["backends"]], ["claude", "codex", "api"])
         for backend in public["backends"]:
-            self.assertEqual(set(backend), {"name", "available", "configured", "authenticated"})
+            fields = {"name", "available", "configured", "authenticated"}
+            if backend["name"] in ("claude", "codex"):
+                fields.update(("model", "model_suggestions"))
+            self.assertEqual(set(backend), fields)
             self.assertTrue(backend["available"])
             self.assertIsNone(backend["authenticated"])
         self.assert_private(public)

@@ -49,7 +49,7 @@ class LaunchServiceTests(unittest.TestCase):
 
     def test_settings_public_view_and_unknown_config_fields(self):
         info = self.app.settings()
-        self.assertEqual(set(info), {"backend", "backends", "api"})
+        self.assertEqual(set(info), {"backend", "backends", "api", "timeout_seconds"})
         self.assertEqual(info["backend"], "claude")
         self.assertTrue(info["api"]["key_configured"])
         self.assertNotIn("SECRET_TEST_KEY", json.dumps(info))

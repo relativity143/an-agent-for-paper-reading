@@ -1,0 +1,490 @@
+{
+  "date": "2026-11-15",
+  "cli_versions": {
+    "claude": "2.1.322",
+    "codex": "0.147.0"
+  },
+  "per_generate_timeout_seconds": 600,
+  "case_deadline_seconds": 1220,
+  "maximum_simultaneous_backends": 2,
+  "sources": [
+    {
+      "paper": "2610.27436v1",
+      "title": "Steering of topological criticality in the Su-Schrieffer-Heeger chain via non-Hermitian substitutional impurities",
+      "pdf_pages": 13,
+      "html_chars": 62262,
+      "pdf_chars": 125239,
+      "html_url": "https://arxiv.org/html/2610.27436v1",
+      "pdf_url": "https://arxiv.org/pdf/2610.27436v1",
+      "html_sha256": "8b3220769ee4cc76aa8fd5bdab76053747ff3b9d24077579d95e3fd7452b299a",
+      "pdf_sha256": "f023a628f58bf754884d883b0ca97b3b2204d6f4e6e86fc49182a3d8820a1aa9"
+    },
+    {
+      "paper": "2203.00107v5",
+      "title": "Tunable superconducting coupling of quantum dots via Andreev bound states in semiconductor-superconductor nanowires",
+      "pdf_pages": 17,
+      "html_chars": 62067,
+      "pdf_chars": 110999,
+      "html_url": "https://arxiv.org/html/2203.00107v5",
+      "pdf_url": "https://arxiv.org/pdf/2203.00107v5",
+      "html_sha256": "c79ac0d72667602faa92e2c2db841e0989a4740afbc08b8f814ad0e909b674ad",
+      "pdf_sha256": "44d0b56ea60ddc6874dfb6d2a1826db74c506461d19b4ed6f6debb1d13bbd1de"
+    }
+  ],
+  "protocols": {
+    "baseline": {
+      "explicit_location_hint": false,
+      "configured_model": null,
+      "claude_local_requested_default": "claude-opus-5-5",
+      "claude_local_effort": "xhigh"
+    },
+    "explicit_location_followup": {
+      "explicit_location_hint": true,
+      "claude_requested_model": "sonnet",
+      "claude_local_effort_unchanged": true,
+      "codex_requested_model": null
+    }
+  },
+  "measurement_boundaries": [
+    "Prepared public source files through real prompts, CLI calls, local validation and persistence.",
+    "Source downloads used system-verified curl after Python HTTPS certificate-chain failure; Store.fetch networking was not validated.",
+    "Local validation checks required fields, existing HTML IDs, PDF page range and nonempty quotes; it does not verify each quote verbatim against its page.",
+    "No browser integration or academic physics-quality review was performed in this measurement.",
+    "CLI reported token usage is not a billing statement; no cost or usage is inferred for timed-out or cancelled calls.",
+    "generation_command_attempts counts entry into the local CLI generation path, not confirmed provider receipt or billed requests.",
+    "Codex stdout did not report the resolved model name; Claude setting names are requested settings unless a response reports its model."
+  ],
+  "summary": {
+    "cases_started": 8,
+    "cases_not_run": 2,
+    "baseline_cases_superseded": 2,
+    "validated_and_saved": 4,
+    "timed_out": 2,
+    "policy_cancelled": 1,
+    "validation_or_other_errors": 1,
+    "generate_calls": 11,
+    "generation_command_attempts": 11,
+    "cases_with_schema_repair": 3,
+    "generate_calls_over_120_seconds": 2,
+    "completed_cases_over_120_seconds_excluding_policy_cancelled": 2,
+    "workers_stopped_for_all_started_cases": true
+  },
+  "reported_usage_totals": {
+    "claude": {},
+    "codex": {
+      "input_tokens": 297957,
+      "cached_input_tokens": 25600,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 17007,
+      "reasoning_output_tokens": 699
+    }
+  },
+  "cases": [
+    {
+      "case": "claude-2203.00107v5-html",
+      "backend": "claude",
+      "paper": "2203.00107v5",
+      "format": "html",
+      "source_chars": 62067,
+      "pdf_pages": null,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 96752,
+          "status": "backend_error",
+          "phase": "generation",
+          "safe_error": "模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+          "duration_seconds": 600.219,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "timed_out",
+      "started_at": "2026-11-15T02:17:21.549445+00:00",
+      "safe_error": "模型后端未完成本轮：模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+      "saved_explanations": 0,
+      "duration_seconds": 600.224,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "codex-2203.00107v5-html",
+      "backend": "codex",
+      "paper": "2203.00107v5",
+      "format": "html",
+      "source_chars": 62067,
+      "pdf_pages": null,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 96752,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "190d66df2dca3cbabcbdfa9e6e36738fe84f60bfa91510019f8adce365644723",
+          "usage": {
+            "input_tokens": 43394,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 1714,
+            "reasoning_output_tokens": 110
+          },
+          "duration_seconds": 39.911,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "validated_and_saved",
+      "started_at": "2026-11-15T02:17:21.549640+00:00",
+      "result_type": "overview",
+      "saved_explanations": 1,
+      "duration_seconds": 39.924,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "codex-2203.00107v5-pdf",
+      "backend": "codex",
+      "paper": "2203.00107v5",
+      "format": "pdf",
+      "source_chars": 110999,
+      "pdf_pages": 17,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 121512,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "21cb32d448a6e2101d506d7d6d0972d23fe2b15525731ec0b9ca564cef4c08f4",
+          "usage": {
+            "input_tokens": 38684,
+            "cached_input_tokens": 6400,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2028,
+            "reasoning_output_tokens": 96
+          },
+          "duration_seconds": 45.602,
+          "generation_command_attempts": 1
+        },
+        {
+          "number": 2,
+          "prompt_chars": 121613,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "8e997f47d01832b0ace361d2db8eb1197fcdebbc779c33e19f7ea34705985418",
+          "usage": {
+            "input_tokens": 38722,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 1962,
+            "reasoning_output_tokens": 75
+          },
+          "duration_seconds": 44.674,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "error",
+      "started_at": "2026-11-15T02:18:01.480709+00:00",
+      "schema_repair": true,
+      "safe_error": "模型连续两次返回缺栏或无法定位的讲解，本轮未保存。",
+      "saved_explanations": 0,
+      "duration_seconds": 90.473,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "codex-2610.27436v1-html",
+      "backend": "codex",
+      "paper": "2610.27436v1",
+      "format": "html",
+      "source_chars": 62262,
+      "pdf_pages": null,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 85091,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "17a80d0258986d37dd3bba0aa1fd3a7c8ccc531eeb590edea7260ab362f5121e",
+          "usage": {
+            "input_tokens": 33960,
+            "cached_input_tokens": 6400,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2302,
+            "reasoning_output_tokens": 81
+          },
+          "duration_seconds": 53.854,
+          "generation_command_attempts": 1
+        },
+        {
+          "number": 2,
+          "prompt_chars": 85198,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "d27cc3ef722724f515811b83b72999143ba8ec0a674fa765bc6d1bb05025ca96",
+          "usage": {
+            "input_tokens": 33997,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2300,
+            "reasoning_output_tokens": 67
+          },
+          "duration_seconds": 49.915,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "validated_and_saved",
+      "started_at": "2026-11-15T02:19:31.963036+00:00",
+      "schema_repair": true,
+      "result_type": "overview",
+      "saved_explanations": 1,
+      "duration_seconds": 103.793,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "codex-2610.27436v1-pdf",
+      "backend": "codex",
+      "paper": "2610.27436v1",
+      "format": "pdf",
+      "source_chars": 125239,
+      "pdf_pages": 13,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 135008,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "9759853abb2481e095e0d725ffc2609bee3f32fc1175ab442286e41cbb365e30",
+          "usage": {
+            "input_tokens": 35191,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2126,
+            "reasoning_output_tokens": 99
+          },
+          "duration_seconds": 47.158,
+          "generation_command_attempts": 1
+        },
+        {
+          "number": 2,
+          "prompt_chars": 135117,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "b13878fc5c895a8f12c1372fcf4828ab2b5e97f53a09264922fc201da1626df9",
+          "usage": {
+            "input_tokens": 35230,
+            "cached_input_tokens": 6400,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2070,
+            "reasoning_output_tokens": 69
+          },
+          "duration_seconds": 46.733,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "validated_and_saved",
+      "started_at": "2026-11-15T02:21:15.768849+00:00",
+      "schema_repair": true,
+      "result_type": "overview",
+      "saved_explanations": 1,
+      "duration_seconds": 94.046,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "claude-2203.00107v5-pdf",
+      "backend": "claude",
+      "paper": "2203.00107v5",
+      "format": "pdf",
+      "source_chars": 110999,
+      "pdf_pages": 17,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 121512,
+          "status": "backend_error",
+          "phase": "generation",
+          "safe_error": "已停止这一轮。",
+          "duration_seconds": 68.165,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "cancelled_by_trial_policy",
+      "started_at": "2026-11-15T02:27:21.806139+00:00",
+      "safe_error": "已停止这一轮。",
+      "saved_explanations": 0,
+      "duration_seconds": 68.319,
+      "workers_stopped": true,
+      "protocol": "baseline",
+      "requested_model": null,
+      "reason": "默认模型首例超时后终止重复试验；不是性能超时样本。"
+    },
+    {
+      "case": "claude-2610.27436v1-html",
+      "backend": "claude",
+      "paper": "2610.27436v1",
+      "format": "html",
+      "source_chars": 62262,
+      "pdf_pages": null,
+      "attempts": [],
+      "status": "superseded_by_revised_protocol",
+      "reason": "默认 Claude 首例达到 600 秒后停止剩余默认模型案例。",
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "claude-2610.27436v1-pdf",
+      "backend": "claude",
+      "paper": "2610.27436v1",
+      "format": "pdf",
+      "source_chars": 125239,
+      "pdf_pages": 13,
+      "attempts": [],
+      "status": "superseded_by_revised_protocol",
+      "reason": "默认 Claude 首例达到 600 秒后停止剩余默认模型案例。",
+      "protocol": "baseline",
+      "requested_model": null
+    },
+    {
+      "case": "claude-sonnet-2203.00107v5-pdf",
+      "backend": "claude",
+      "paper": "2203.00107v5",
+      "format": "pdf",
+      "source_chars": 110999,
+      "pdf_pages": 17,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 121720,
+          "status": "backend_error",
+          "phase": "generation",
+          "safe_error": "模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+          "duration_seconds": 600.232,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "timed_out",
+      "started_at": "2026-11-15T02:29:29.495343+00:00",
+      "safe_error": "模型后端未完成本轮：模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+      "saved_explanations": 0,
+      "duration_seconds": 600.389,
+      "workers_stopped": true,
+      "protocol": "explicit_location_followup",
+      "requested_model": "sonnet"
+    },
+    {
+      "case": "codex-recheck-2203.00107v5-pdf",
+      "backend": "codex",
+      "paper": "2203.00107v5",
+      "format": "pdf",
+      "source_chars": 110999,
+      "pdf_pages": 17,
+      "attempts": [
+        {
+          "number": 1,
+          "prompt_chars": 121720,
+          "status": "returned_structured_output",
+          "phase": "generation",
+          "raw_output_sha256": "112c0dc9631bcc03951f52670d2db896ff9ba4a67ef824ae3f09bd4ab8ea3f1b",
+          "usage": {
+            "input_tokens": 38779,
+            "cached_input_tokens": 6400,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 2505,
+            "reasoning_output_tokens": 102
+          },
+          "duration_seconds": 56.942,
+          "generation_command_attempts": 1
+        }
+      ],
+      "status": "validated_and_saved",
+      "started_at": "2026-11-15T02:29:29.495543+00:00",
+      "result_type": "overview",
+      "saved_explanations": 1,
+      "duration_seconds": 57.102,
+      "workers_stopped": true,
+      "protocol": "explicit_location_followup",
+      "requested_model": null
+    },
+    {
+      "case": "claude-sonnet-2610.27436v1-html",
+      "backend": "claude",
+      "paper": "2610.27436v1",
+      "format": "html",
+      "source_chars": 62262,
+      "pdf_pages": null,
+      "attempts": [],
+      "status": "not_run",
+      "reason": "模型后端未完成本轮：模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+      "protocol": "explicit_location_followup",
+      "requested_model": "sonnet"
+    },
+    {
+      "case": "claude-sonnet-2610.27436v1-pdf",
+      "backend": "claude",
+      "paper": "2610.27436v1",
+      "format": "pdf",
+      "source_chars": 125239,
+      "pdf_pages": 13,
+      "attempts": [],
+      "status": "not_run",
+      "reason": "模型后端未完成本轮：模型生成超时，请重试、选择更快的模型，或在本机配置中增加 timeout_seconds。",
+      "protocol": "explicit_location_followup",
+      "requested_model": "sonnet"
+    }
+  ],
+  "cleanup": {
+    "verified_after_trials": true,
+    "known_owned_process_groups_alive": 0,
+    "remaining_trial_or_claude_print_processes": 0
+  },
+  "offline_validation_diagnostics": [
+    {
+      "case": "codex-2203.00107v5-html",
+      "attempt": 1,
+      "validation": "passed"
+    },
+    {
+      "case": "codex-2203.00107v5-pdf",
+      "attempt": 1,
+      "validation": "failed",
+      "safe_error": "explanation.question.where.page: PDF locations require a positive page"
+    },
+    {
+      "case": "codex-2203.00107v5-pdf",
+      "attempt": 2,
+      "validation": "failed",
+      "safe_error": "explanation.question.where.quote: PDF locations require an original-text quote"
+    },
+    {
+      "case": "codex-2610.27436v1-html",
+      "attempt": 1,
+      "validation": "failed",
+      "safe_error": "explanation.model.items[5].where.ids: HTML locations require at least one ID"
+    },
+    {
+      "case": "codex-2610.27436v1-html",
+      "attempt": 2,
+      "validation": "passed"
+    },
+    {
+      "case": "codex-2610.27436v1-pdf",
+      "attempt": 1,
+      "validation": "failed",
+      "safe_error": "explanation.question.where.quote: PDF locations require an original-text quote"
+    },
+    {
+      "case": "codex-2610.27436v1-pdf",
+      "attempt": 2,
+      "validation": "passed"
+    },
+    {
+      "case": "codex-recheck-2203.00107v5-pdf",
+      "attempt": 1,
+      "validation": "passed"
+    }
+  ]
+}

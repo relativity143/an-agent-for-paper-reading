@@ -1,9 +1,9 @@
 {
   "backend": "claude",
-  "timeout_seconds": 120,
+  "timeout_seconds": 600,
   "max_retries": 1,
-  "claude": {"executable": "claude", "model": null},
-  "codex": {"executable": "codex", "model": null},
+  "claude": {"executable": "claude", "model": null, "model_suggestions": ["sonnet", "opus"]},
+  "codex": {"executable": "codex", "model": null, "model_suggestions": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra"]},
   "api": {
     "base_url": "https://api.openai.com/v1",
     "model": "",

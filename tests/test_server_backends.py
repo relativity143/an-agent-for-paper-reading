@@ -146,13 +146,13 @@ class APIBackendTests(unittest.TestCase):
 
     def test_oversized_response_is_rejected(self):
         self.backend.opener.open.return_value = io.BytesIO(b"x" * (backends.MAX_OUTPUT_BYTES + 1))
-        with self.assertRaisesRegex(backends.BackendError, "output limit"):
+        with self.assertRaisesRegex(backends.BackendError, "过长"):
             self.backend.generate("prompt", SCHEMA)
 
     def test_total_deadline_applies_while_reading_response(self):
         response = io.BytesIO(b"partial JSON")
         with mock.patch.object(backends.time, "monotonic", side_effect=[1, 3]):
-            with self.assertRaisesRegex(backends.BackendError, "timed out"):
+            with self.assertRaisesRegex(backends.BackendError, "超时"):
                 self.backend._read_response(response, 2)
 
 
@@ -214,7 +214,7 @@ class CLIBackendTests(unittest.TestCase):
 
     def test_missing_isolation_flags_fail_before_generation(self):
         with mock.patch.object(backends.shutil, "which", return_value="/cli/codex"), mock.patch.object(backends, "_run_cli", return_value=b"old CLI") as run:
-            with self.assertRaisesRegex(backends.BackendError, "Update Codex"):
+            with self.assertRaisesRegex(backends.BackendError, "Codex 版本太旧"):
                 self.backend("codex").generate("prompt", SCHEMA)
             self.assertEqual(run.call_count, 1)
 
@@ -234,7 +234,7 @@ class CLIBackendTests(unittest.TestCase):
     def test_missing_tool_disable_features_fail_before_generation(self):
         help_text = b"--ignore-user-config --ignore-rules --ephemeral --output-schema"
         with mock.patch.object(backends.shutil, "which", return_value="/cli/codex"), mock.patch.object(backends, "_run_cli", side_effect=[help_text, b"shell_tool stable true"]) as run:
-            with self.assertRaisesRegex(backends.BackendError, "tool controls"):
+            with self.assertRaisesRegex(backends.BackendError, "工具禁用功能"):
                 self.backend("codex").generate("prompt", SCHEMA)
             self.assertEqual(run.call_count, 2)
 
@@ -261,7 +261,7 @@ class CLIBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cwd = Path(directory)
             started = time.monotonic()
-            with self.assertRaisesRegex(backends.BackendError, "timed out"):
+            with self.assertRaisesRegex(backends.BackendError, "超时"):
                 backends._run_cli([sys.executable, "-c", code], "", cwd, 0.4)
             self.assertLess(time.monotonic() - started, 3)
             heartbeat = cwd / "heartbeat"

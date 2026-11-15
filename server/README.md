@@ -6,6 +6,8 @@
 
 macOS 可以直接双击仓库根目录的 [start.command](../start.command)。它会找到 Python 3.10 或以上版本并打开页面；没有合适的 Python 时给出中文说明。默认端口已有本服务时直接复用，被其他程序占用时使用空闲端口，并打印实际地址。关闭启动服务的窗口，或在该窗口按 Ctrl+C，服务即停止；终端询问是否终止时选择“终止”。复用服务时新开的窗口不拥有旧服务，停止仍需关闭原窗口。
 
+换过端口后，再次启动也会通过当前数据目录的 `.server.json` 找到原服务。该记录和锁、进程、服务标识共同核对，关闭时移除；不会借用另一个数据目录的服务。
+
 从 GitHub 下载压缩包得到的文件，第一次双击可能被系统拦下，需要在访达里右键选“打开”。启动文件使用真实的 `~/.paperread/`，会清除继承的 `PAPERREAD_HOME`；测试和其他数据目录仍通过下面的命令行入口指定。它不会设置登录时自动启动，也没有后台常驻程序。
 
 后端需要 Python 3.10 或以上，HTML 阅读只用标准库。命令行仍可在仓库根目录运行：
@@ -31,7 +33,7 @@ python3 -m server --open
 或者：
 
 ```json
-{"backend": "codex", "timeout_seconds": 180}
+{"backend": "codex", "timeout_seconds": 600}
 ```
 
 API 模式：
@@ -39,7 +41,7 @@ API 模式：
 ```json
 {
   "backend": "api",
-  "timeout_seconds": 120,
+  "timeout_seconds": 600,
   "max_retries": 1,
   "api": {
     "base_url": "https://your-provider.example/v1",
@@ -52,20 +54,25 @@ API 模式：
 
 `base_url` 使用提供方的根地址，后端追加 `/chat/completions`。不支持严格结构输出的兼容提供方可改为 `json_object`，输出仍要通过本机校验。只允许 HTTPS；本机模型地址可用 loopback HTTP。选择后端可通过设置接口立即生效，无须重启；手改 API 或 CLI 配置后，需要重新选择后端（可选择同名后端）或重启以载入新配置。支持 CLI 的 `executable`、`model` 覆盖，完整字段见样例。
 
+Claude/Codex 的 `model:null` 跟随命令行程序默认值；可选的 `model_suggestions` 是模型名字符串数组，允许空列表。请求和手写配置中的模型名均须以英文字母或数字开头，只能包含字母、数字和 `. _ : - [ ]`，最长 100 字符。模型建议不保证账号权限，保存时不消耗额度验证。
+
+默认单次模型调用时限为 600 秒，可设为 30–600 秒整数；已有配置里的显式时限不会自动覆盖。API 网络重试共用本次时限；结构/定位修正的第二次模型调用另算完整时限，一轮最多接近两倍设置值。600 秒是本轮约定的可配置上限，不保证所有模型和网络环境都能在限时内完成；真实试跑与限制见 [计时记录](../docs/m1-round2-live-trial.md)。
+
 CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相关能力，并限定时间与输出长度；需要支持这些开关的较新版本。CLI 模式当前支持 macOS/Linux，Windows 可用 API 模式。Claude 的安全模式保留本机认证助手和模型设置；Codex 使用忽略用户自定义配置的模式，需要自定义模型服务时可用 API 分支。任务不会把提示或密钥放到命令行参数中；结构 schema 会作为参数或临时文件传入。
 
 ## 前端对接
 
-2026-11-15 新增的启动、设置、列表与上传接口见 [本轮交付说明](../docs/m1-launch-delivery.md)，供 Claude 继续接页面。
+启动、设置、列表与上传接口见 [首轮交付](../docs/m1-launch-delivery.md)；模型名、时限、停止与排队问题恢复见 [第二轮交付](../docs/m1-round2-delivery.md)，供 Claude 继续接页面。
 
-主体接口见 `docs/agent-architecture.md`。本轮新增细节记录在 `docs/implementation.md` 第 21 节。
+主体接口见 `docs/agent-architecture.md`。实现记录见 `docs/implementation.md` 第 21–23 节。
 
 继续做浏览器联调时，先看 [给 Claude 的 M1 交接说明](../docs/claude-m1-handoff.md)，其中列出了前端待改位置、恢复流程和验收清单。
 
-1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。
+1. `POST /api/papers` 打开论文，随后读取 `/content` 与 `/explanations`。打开未读论文不自动生成；由读者点击“继续”开始。
 2. `POST /api/papers/<paper>/explain` 请求体为 `{"mode":"continue"}`，或带选中文本的 `ask`。
 3. 使用返回的任务编号订阅 `/api/tasks/<task>/events`。`status` 和 `error` 是普通文字，`result` 是一个 JSON 讲解对象；每个任务只有一个终态。SSE 支持 `Last-Event-ID`，终态后连接关闭。
 4. **卡片成功显示后**，调用 `POST /api/papers/<paper>/explanations/<id>/displayed`，请求体 `{}`。重开历史时同样调用；重复请求幂等。只有这一步才写阅读日志及实际讲过的概念。
+5. 生成期间可 `POST /api/tasks/<task>/cancel`，请求体 `{}`；成功返回 `{task,cancelled:true}`。事件流以中文 error 结束，不保存本轮讲解，可立即重试；别的论文不受影响。已经结束的任务再次取消也成功，保留已保存结果；未知任务 404。API 断开本机连接不保证提供商立即停止计费。
 
 首次任务只返回导读。首次选中的问题会保留，下一次继续回答。基础尚未补完时，`progress.next` 指回当前点；服务恢复这个位置，不按按钮次数递增。主线已结束时不会自动开启第二部分。
 
@@ -75,10 +82,11 @@ CLI 每轮使用临时工作目录，关闭工具、MCP、自定义指令及相�
 
 ## 设置、列表、提问与上传
 
-- `GET /api/settings` 返回约定的后端状态及 API 的 `base_url`、`model`、`key_configured`，不返回密钥、配置路径或 CLI 路径；`authenticated` 始终是 `null`。仅做本机安装/配置检查，不请求模型检查登录。
-- `PUT /api/settings` 只接受 `{"backend":"claude"}`、`codex` 或 `api`。多余字段或不可用后端返回 400；生成中返回 409。成功切换后 health 和下一轮讲解同步生效；原子保存时保留其他配置字段，包括读者的扩展字段。非法原文件不改写。
+- `GET /api/settings` 返回后端状态、`timeout_seconds`、Claude/Codex 的 `model/model_suggestions` 及 API 的 `base_url/model/key_configured`，不返回密钥、配置路径或 CLI 路径；`authenticated` 始终是 `null`。仅做本机安装/配置检查，不请求模型检查登录。所选模型和时限反映当前实际生效值。
+- `PUT /api/settings` 接受 `backend/model/timeout_seconds` 的非空组合，例如 `{"backend":"codex","model":null,"timeout_seconds":450}`。不带 backend 时针对当前后端；API 不接受 model 字段。多余字段、非法模型名/时限或不可用后端返回 400；生成中返回 409，需完成或停止后再改。成功后 health 和下一轮讲解同步生效；原子保存保留其他配置及扩展字段，非法原文件不改写。
 - `GET /api/papers` 返回 `{papers:[...]}`，每项含 `paper/title/authors/source/explanations/last_read`。`explanations` 是可恢复的讲解对象数，可能包含尚未显示的结果。`last_read` 只在显示回执时更新，生成不算阅读；重复回执只更新时间，不重复日志或概念状态。最近显示的在前，未读的在后；损坏缓存跳过。
 - 讲解新增服务填写的 `asked`：含 `quote/question/where/page`，缺项为 `null`。非提问触发和导读为 `null`；导读前排队的问题记在之后回答它的讲解上。旧对象读回时补 `null`，不迁移原文件。该字段不进入模型输出 schema，也不把历史中的字段包装重新发给模型。
+- `GET /api/papers/<paper>` 元数据带 `pending`：无待答问题时为 null，否则是同样四项的提问对象；取消生成不丢掉已排队的问题。回答保存后清空并转到讲解的 asked。历史接口仍返回数组，刷新时同时读取元数据恢复待答卡片。
 - `POST /api/papers/upload` 接收原始 PDF 字节，不是 JSON 或 multipart。要求 `Content-Type: application/pdf` 和 Content-Length；可选 `X-Paper-Name` 是 UTF-8 文件名经百分号编码后的值。最多 50 MiB，文件头须为 `%PDF-`，逐块写入临时文件，成功和失败后均清理。返回与打开论文相同的元数据。文件名去除路径后用于现有本地导入标识和显示标题；同内容同安全文件名复用缓存。
 - 本地 PDF 对外的 `source_url` 现在为 `null`，不会把 `file://` 本机路径传给页面或模型。PDF 文件仍通过 `/api/papers/<paper>/pdf` 获取。
 

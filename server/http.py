@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
@@ -90,13 +89,17 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
 
         def send_error(self, code, message=None, explain=None):
             # BaseHTTPRequestHandler otherwise sends HTML and echoes messages.
-            phrase = HTTPStatus(code).phrase if code in HTTPStatus._value2member_map_ else "Request failed"
+            phrase = {400: "请求格式不正确，请刷新页面后重试。", 404: "没有找到请求的内容。",
+                      408: "接收请求超时，请重试。", 414: "请求地址过长。",
+                      431: "请求头过大，请缩短文件名后重试。",
+                      501: "不支持这种请求方式，请刷新页面重试。",
+                      505: "不支持此 HTTP 版本，请使用现代浏览器。"}.get(code, "请求未完成，请刷新页面重试。")
             self._error(code, phrase)
 
         def _single_header(self, name):
             values = self.headers.get_all(name, [])
             if len(values) > 1:
-                raise _HTTPFailure(400, "Duplicate request header.")
+                raise _HTTPFailure(400, "请求头重复，请刷新页面后重试。")
             return values[0].strip() if values else None
 
         def _check_origin(self):
@@ -106,39 +109,41 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             if bound_port == 80:
                 allowed.update({"127.0.0.1", "localhost"})
             if host not in allowed:
-                raise _HTTPFailure(403, "Unrecognized local host.")
+                raise _HTTPFailure(403, "请从本机服务显示的地址打开页面。")
             origin = self._single_header("Origin")
             if origin is not None and origin != f"http://{host}":
-                raise _HTTPFailure(403, "Only same-origin requests are accepted.")
+                raise _HTTPFailure(403, "只接受来自本机阅读页面的同源请求。")
             fetch_site = self._single_header("Sec-Fetch-Site")
             if fetch_site is not None and fetch_site not in {"same-origin", "none"}:
-                raise _HTTPFailure(403, "Only same-origin requests are accepted.")
+                raise _HTTPFailure(403, "只接受来自本机阅读页面的同源请求。")
             referer = self._single_header("Referer")
             if referer:
                 parsed = urlsplit(referer)
                 if parsed.scheme != "http" or parsed.netloc != host:
-                    raise _HTTPFailure(403, "Only same-origin requests are accepted.")
+                    raise _HTTPFailure(403, "只接受来自本机阅读页面的同源请求。")
 
         def _body_length(self, *, limit=MAX_BODY_BYTES, content_type="application/json", type_status=415):
             if self._single_header("Transfer-Encoding") is not None:
-                raise _HTTPFailure(400, "Transfer-Encoding is not supported.")
+                raise _HTTPFailure(400, "请提供请求长度，不支持 Transfer-Encoding。")
             length = self._single_header("Content-Length")
             if length is None:
-                raise _HTTPFailure(411, "A Content-Length header is required.")
+                raise _HTTPFailure(411, "缺少 Content-Length 请求长度。")
             if not length.isascii() or not length.isdigit() or len(length) > 12:
-                raise _HTTPFailure(400, "Invalid Content-Length.")
+                raise _HTTPFailure(400, "Content-Length 请求长度不合法。")
             size = int(length)
             if size > limit:
-                raise _HTTPFailure(413, "The request is too large.")
+                raise _HTTPFailure(413, "文件超过 50 MiB 上限，请换用较小的 PDF。" if limit == MAX_UPLOAD_BYTES
+                                   else "请求超过 1 MiB 上限，请缩短输入。")
             received_type = self._single_header("Content-Type") or ""
             if received_type.split(";", 1)[0].strip().lower() != content_type:
-                raise _HTTPFailure(type_status, f"Use {content_type}.")
+                raise _HTTPFailure(type_status, "请上传 PDF 文件（application/pdf）。" if content_type == "application/pdf"
+                                   else "请使用 application/json 发送请求。")
             return size
 
         def _upload_headers(self):
             length = self._body_length(limit=MAX_UPLOAD_BYTES, content_type="application/pdf", type_status=400)
             if length < 5:
-                raise _HTTPFailure(400, "A PDF file is required.")
+                raise _HTTPFailure(400, "上传内容不是 PDF，请选择有效的 PDF 文件。")
             filename = self._single_header("X-Paper-Name")
             if filename is not None:
                 try:
@@ -146,13 +151,13 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                         raise ValueError()
                     filename = unquote(filename, encoding="utf-8", errors="strict")
                 except (UnicodeError, ValueError):
-                    raise _HTTPFailure(400, "Invalid PDF filename.") from None
+                    raise _HTTPFailure(400, "PDF 文件名格式不正确，请重命名后重试。") from None
                 if any(ord(character) < 32 or ord(character) == 127 for character in filename):
-                    raise _HTTPFailure(400, "Invalid PDF filename.")
+                    raise _HTTPFailure(400, "PDF 文件名格式不正确，请重命名后重试。")
                 # Browsers may include Unix or Windows paths. Only retain the name.
                 filename = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
                 if filename in {"", ".", ".."}:
-                    raise _HTTPFailure(400, "Invalid PDF filename.")
+                    raise _HTTPFailure(400, "PDF 文件名格式不正确，请重命名后重试。")
             return length, filename
 
         def handle_expect_100(self):
@@ -174,13 +179,13 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             length = self._body_length()
             data = self.rfile.read(length)
             if len(data) != length:
-                raise _HTTPFailure(400, "Incomplete request body.")
+                raise _HTTPFailure(400, "请求内容未传输完整，请重新提交。")
             try:
                 value = json.loads(data.decode("utf-8"), parse_constant=_reject_json_constant)
             except (UnicodeDecodeError, ValueError, RecursionError):
-                raise _HTTPFailure(400, "Invalid JSON body.") from None
+                raise _HTTPFailure(400, "JSON 请求格式不正确。") from None
             if not isinstance(value, dict):
-                raise _HTTPFailure(400, "The JSON body must be an object.")
+                raise _HTTPFailure(400, "JSON 请求必须是对象。")
             return value
 
         def _upload_pdf(self):
@@ -190,15 +195,15 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 with source.open("wb") as target:
                     header = self.rfile.read(5)
                     if len(header) != 5:
-                        raise _HTTPFailure(400, "Incomplete request body.")
+                        raise _HTTPFailure(400, "请求内容未传输完整，请重新提交。")
                     if header != b"%PDF-":
-                        raise _HTTPFailure(400, "A PDF file is required.")
+                        raise _HTTPFailure(400, "上传内容不是 PDF，请选择有效的 PDF 文件。")
                     target.write(header)
                     remaining = length - len(header)
                     while remaining:
                         chunk = self.rfile.read(min(64 * 1024, remaining))
                         if not chunk:
-                            raise _HTTPFailure(400, "Incomplete request body.")
+                            raise _HTTPFailure(400, "请求内容未传输完整，请重新提交。")
                         target.write(chunk)
                         remaining -= len(chunk)
                 metadata = app.import_uploaded_pdf(source, filename)
@@ -206,16 +211,16 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
 
         def _path(self):
             if not self.path.startswith("/") or self.path.startswith("//"):
-                raise _HTTPFailure(400, "Invalid request path.")
+                raise _HTTPFailure(400, "请求地址格式不正确。")
             try:
                 path = unquote(urlsplit(self.path).path, errors="strict")
             except (UnicodeError, ValueError):
-                raise _HTTPFailure(400, "Invalid request path.") from None
+                raise _HTTPFailure(400, "请求地址格式不正确。") from None
             parts = path.split("/")[1:]
             if any(part in {".", ".."} or "\\" in part or
                    any(ord(character) < 32 or ord(character) == 127 for character in part)
                    for part in parts):
-                raise _HTTPFailure(404, "Not found.")
+                raise _HTTPFailure(404, "没有找到请求的内容。")
             return path, parts
 
         def _file(self, path, content_type):
@@ -241,7 +246,7 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             if candidate.suffix.lower() == ".json" and parts[0] != "mock":
                 raise FileNotFoundError()
             if parts == ["index.html"] and not candidate.exists():
-                self._bytes(200, b"Paper Reading server is running. The web interface is not installed.\n",
+                self._bytes(200, "论文阅读服务已启动，但页面文件尚未安装。请检查仓库的 web 目录。\n".encode("utf-8"),
                             "text/plain; charset=utf-8")
                 return
             content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
@@ -256,7 +261,7 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             app.get_task(task_id)
             cursor = self._single_header("Last-Event-ID") or "0"
             if not cursor.isascii() or not cursor.isdigit() or len(cursor) > 19:
-                raise _HTTPFailure(400, "Invalid Last-Event-ID.")
+                raise _HTTPFailure(400, "讲解事件游标不合法，请刷新页面恢复记录。")
             last_id = int(cursor)
             events = app.task_events(task_id, after=last_id)
             self._headers(200, "text/event-stream; charset=utf-8")
@@ -285,7 +290,7 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             except (BrokenPipeError, ConnectionResetError, socket.timeout):
                 pass
             except Exception:
-                self.wfile.write(b"event: error\ndata: The explanation stream failed.\n\n")
+                self.wfile.write("event: error\ndata: 讲解连接中断，请刷新页面恢复已保存的记录。\n\n".encode("utf-8"))
                 self.wfile.flush()
             finally:
                 close = getattr(events, "close", None)
@@ -297,10 +302,10 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             path, parts = self._path()
             method = self.command
             if method not in {"GET", "HEAD", "POST", "PUT"}:
-                raise _HTTPFailure(405, "Method not allowed.")
+                raise _HTTPFailure(405, "不支持这种请求方式。")
             if method == "PUT":
                 if parts != ["api", "settings"]:
-                    raise _HTTPFailure(405, "Method not allowed.")
+                    raise _HTTPFailure(405, "不支持这种请求方式。")
                 self._json(200, app.update_settings(self._read_json()))
                 return
             if method == "POST":
@@ -308,10 +313,15 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                     self._upload_pdf()
                     return
                 body = self._read_json()
+                if len(parts) == 4 and parts[:2] == ["api", "tasks"] and parts[3] == "cancel":
+                    if body:
+                        raise _HTTPFailure(400, "停止请求只接受空对象 {}。")
+                    self._json(200, app.cancel_task(parts[2]))
+                    return
                 if parts == ["api", "papers"]:
                     source = body.get("input")
                     if not isinstance(source, str) or not source.strip():
-                        raise _HTTPFailure(400, "A paper input is required.")
+                        raise _HTTPFailure(400, "请输入论文编号、链接或本地 PDF 路径。")
                     self._json(200, app.import_paper(source))
                     return
                 if len(parts) == 4 and parts[:2] == ["api", "papers"] and parts[3] == "explain":
@@ -332,7 +342,7 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
                 return
             if len(parts) == 4 and parts[:2] == ["api", "tasks"] and parts[3] == "events":
                 if method == "HEAD":
-                    raise _HTTPFailure(405, "Use GET for task events.")
+                    raise _HTTPFailure(405, "讲解事件流需要使用 GET 请求。")
                 self._events(parts[2])
                 return
             if len(parts) in {3, 4} and parts[:2] == ["api", "papers"]:
@@ -356,17 +366,17 @@ def create_server(app, *, port=8765, web_root=None) -> ThreadingHTTPServer:
             except _HTTPFailure as error:
                 self._error(error.status, error.message)
             except FileNotFoundError:
-                self._error(404, "Not found.")
+                self._error(404, "没有找到请求的内容。")
             except ValueError as error:
-                self._error(400, str(error) or "Invalid request.")
+                self._error(400, str(error) or "请求内容不合法。")
             except RuntimeError as error:
-                self._error(409, str(error) or "Request conflicts with the current state.")
+                self._error(409, str(error) or "当前状态无法执行此请求，请稍后重试。")
             except socket.timeout:
-                self._error(408, "Request timed out.")
+                self._error(408, "接收请求超时，请重新提交。")
             except (BrokenPipeError, ConnectionResetError):
                 pass
             except Exception:
-                self._error(500, "The local service could not complete this request.")
+                self._error(500, "本机服务未能完成请求，请检查本机配置后重试。")
 
         do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = _dispatch
 

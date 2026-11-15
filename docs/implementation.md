@@ -669,3 +669,17 @@ areas:
 5. 新增 raw PDF 上传，50 MiB、严格文件头、分块接收和异常清理，同源检查与原有 JSON 上限保留。清除客户端文件名中的路径，沿用本地 PDF 缓存；本地 PDF 的 `source_url` 对外和模型输入均改为 null。
 
 未修改 Claude 的 `web/` 或架构文档。`Application` 原构造参数、`backend_info`、`backend.generate(prompt,schema)`、`create_server` 和 `BackendError` 均兼容；仅新增可选 `config`、可选 `close(wait=...)`、`wait_closed()` 及接口方法。`fixture_server.py` 无须为既有联调用法更改这些调用；新设置面板的 fixture 场景可由 Claude 按需要添加。
+
+## 23. M1 第二轮：模型、时限、停止与恢复（2026-11-15）
+
+按 [第二轮交接任务](gpt-m1-launch-handoff.md#第二轮任务2026-11-15) 和架构 §4.6 完成后端；页面继续由 Claude 对接，具体协议和示例见 [交付说明](m1-round2-delivery.md)。
+
+1. GET settings 增加 CLI model/model_suggestions 和 timeout_seconds；PUT 接受 backend/model/timeout_seconds 的非空组合。模型名的字符、首字符和长度限制同时作用于请求和本机配置，API 不接受 model；原子保存继续保留密钥与未知字段。GET 的当前模型/时限与运行中的适配器一致。
+2. 时限扩大且可配置为 30–600 秒整数，实际默认值与依据见 [真实试跑记录](m1-round2-live-trial.md)。一次后端调用共用时限，结构修正最多一次且另算时限；不改为无限修正。用户已明确允许消耗额度，试跑使用独立临时数据目录。
+3. 新增 POST tasks/<id>/cancel，仅接受空对象。任务作用域分别拥有 CLI 进程组或 API 连接；取消未开始任务不调用模型，取消运行任务不保存本轮结果，SSE error 结束，立即释放同篇重试与设置修改。保存与取消加锁互斥；失败清理保留资源和忙碌状态，允许再停一次。任务淘汰先清掉已完成 active 引用。
+4. 模型和 HTTP 的可见报错中文化，给出超时/安装/登录/版本/模型等下一步；不暴露原始 CLI stderr 或提供商响应。API 可中断连接、TLS、响应头和正文等待，关闭 SSL 对象仍由所属工作线程负责。
+5. 以当前目录的 .server.json + 锁/PID/版本/实例标识恢复非默认端口服务；只删除自己的记录。论文元数据新增 pending 提问对象，历史数组保持兼容，回答后 pending 清空并保留 asked。没有迁移或触碰真实读者状态。
+
+新增四份第二轮回归文件，包含设置、模型后端、服务/HTTP、启动器；旧测试更新中文文案和设置新增字段。基础先行、输出校验、显示回执、known/unsure 区分以及 `generate(prompt,schema)` 的协作边界保持不变。离线结果和真实模型证据分别记录，均不能证明教学效果或物理正确性。
+
+真实试跑中，一份 PDF 在两次输出后仍缺少必要定位。服务提示补充了全部 HTML/PDF 位置对象的既有约束（PDF 页码与原文摘录不能为 null），提醒同时修正所有位置；校验器、重试次数和阅读状态规则没有放宽。补充后的定向复验与初始基线分开记录。

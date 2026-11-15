@@ -1,4 +1,4 @@
-"""Safe settings views and atomic, local-only backend selection changes."""
+"""Safe settings views and atomic, local-only model settings changes."""
 
 from contextlib import contextmanager
 import json
@@ -10,15 +10,25 @@ import time
 from urllib.parse import unquote, urlsplit
 
 from .backends import backend_summary
-from .config import Config, ConfigError, config_from_data, read_config
+from .config import (Config, ConfigError, config_from_data, read_config,
+                     validate_cli_model, validate_timeout)
 
 
 def public_settings(config: Config, selected: str | None = None) -> dict:
     """Expose only the agreed public fields; never serialize Config itself."""
     summary = backend_summary(config)
+    for backend in summary["backends"]:
+        if backend["name"] in ("claude", "codex"):
+            cli = getattr(config, backend["name"])
+            backend["model"] = (_public_api_text(cli.model, config.api.api_key) or None) if cli.model else None
+            backend["model_suggestions"] = [
+                safe for model in cli.model_suggestions
+                if (safe := _public_api_text(model, config.api.api_key))
+            ]
     return {
         "backend": config.backend if selected is None else selected,
         "backends": summary["backends"],
+        "timeout_seconds": config.timeout_seconds,
         "api": {"base_url": _public_api_text(config.api.base_url, config.api.api_key),
                 "model": _public_api_text(config.api.model, config.api.api_key),
                 "key_configured": bool(config.api.api_key)},
@@ -100,24 +110,45 @@ def _atomic_write(home: Path, raw: dict) -> None:
 
 
 @contextmanager
-def prepare_backend_change(home: Path, name: str):
+def prepare_settings_change(home: Path, changes: dict, current_backend: str | None = None):
     """Yield a candidate under lock; persist only if runtime preparation succeeds.
 
     Build the replacement backend inside this context, then publish it only
     after the context exits successfully. No model process or request is run.
+    An omitted backend targets the currently running backend, including when a
+    reader has independently edited the file since the application started.
     """
-    if name not in ("claude", "codex", "api"):
+    if (not isinstance(changes, dict) or not changes
+            or set(changes) - {"backend", "model", "timeout_seconds"}):
+        raise ConfigError("请至少填写后端、模型或讲解时限之一；不接受其他设置项。")
+    changes = dict(changes)
+    if "backend" in changes and changes["backend"] not in ("claude", "codex", "api"):
         raise ConfigError("请选择 Claude、Codex 或 API 后端。")
+    if current_backend is not None and current_backend not in ("claude", "codex", "api"):
+        raise ConfigError("请选择 Claude、Codex 或 API 后端。")
+    if "model" in changes:
+        validate_cli_model(changes["model"])
+    if "timeout_seconds" in changes:
+        validate_timeout(changes["timeout_seconds"])
     home = Path(home).expanduser().resolve()
     with _config_lock(home):
         try:
             raw = read_config(home)
             # Existing invalid known fields must not be repaired implicitly.
-            config_from_data(home, raw)
-            updated = {**raw, "backend": name}
-            candidate = config_from_data(home, updated)
+            existing = config_from_data(home, raw)
         except ConfigError:
             raise ConfigError("本机配置文件内容不合法，请修正后重试。") from None
+        name = changes.get("backend", current_backend if current_backend is not None else existing.backend)
+        if name == "api" and "model" in changes:
+            raise ConfigError("API 模型请在本机 config.json 中修改，页面仅支持选择 Claude 或 Codex 的模型。")
+        updated = dict(raw)
+        if "backend" in changes or name != existing.backend:
+            updated["backend"] = name
+        if "model" in changes:
+            updated[name] = {**raw.get(name, {}), "model": changes["model"]}
+        if "timeout_seconds" in changes:
+            updated["timeout_seconds"] = changes["timeout_seconds"]
+        candidate = config_from_data(home, updated)
         selected = next(item for item in backend_summary(candidate)["backends"] if item["name"] == name)
         if not selected["available"]:
             if name == "api":
@@ -126,6 +157,13 @@ def prepare_backend_change(home: Path, name: str):
             raise ConfigError(f"没有找到 {label} 的命令行程序，请先安装后重试。")
         yield candidate
         _atomic_write(home, updated)
+
+
+@contextmanager
+def prepare_backend_change(home: Path, name: str):
+    """Compatibility wrapper for existing backend-only callers."""
+    with prepare_settings_change(home, {"backend": name}) as config:
+        yield config
 
 
 def write_backend(home: Path, name: str) -> Config:
