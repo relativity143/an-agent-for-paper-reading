@@ -82,6 +82,17 @@ function realApi(health) {
     getSettings: () => getJson(`${base}/settings`),
     // 页面能改三样：用哪个后端、它用哪个模型、每次生成最多等多久（4.6 节）。密钥不经过页面。
     saveSettings: (changes) => sendJson('PUT', `${base}/settings`, changes),
+    // 概念记录与反馈（4.7 节）。旧版后端没有这几个接口：读取得到 404 时返回 null，页面就不显示这一部分。
+    async getRecord(paper) {
+      try {
+        return await getJson(`${paperUrl(paper)}/record`);
+      } catch (error) {
+        if (error.kind === 'http' && error.status === 404) return null;
+        throw error;
+      }
+    },
+    saveRecord: (paper, version, concepts) => sendJson('PUT', `${paperUrl(paper)}/record`, { version, concepts }),
+    sendFeedback: (paper, feedback) => postJson(`${paperUrl(paper)}/feedback`, feedback),
     // 停止正在生成的一轮。已经结束的任务也返回成功，不会删掉已保存的讲解。
     cancelTask: (task) => postJson(`${base}/tasks/${encodeURIComponent(task)}/cancel`, {}),
     // 请求体就是文件本身；文件名只取名字，不带本机路径。
@@ -109,10 +120,85 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 样例模式下的概念记录：规则照 4.7 节，只放在这个标签页里（刷新还在，关掉就没有），不写任何读者数据。
+function mockRecord() {
+  const KEY = 'paperread-mock-record';
+  let record = { version: 0, concepts: [] };
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(KEY));
+    if (saved && Array.isArray(saved.concepts) && Number.isInteger(saved.version)) record = saved;
+  } catch { /* 读不到就从空的开始 */ }
+  const copy = () => JSON.parse(JSON.stringify(record));
+  const find = (name) => record.concepts.find((c) => c.name.toLowerCase() === name.toLowerCase());
+  function commit(touched) {
+    if (!touched) return copy();
+    record.version += 1;
+    record.concepts.sort((a, b) => (a.updated < b.updated ? 1 : a.updated > b.updated ? -1 : 0));
+    try { sessionStorage.setItem(KEY, JSON.stringify(record)); } catch { /* 存不下时只留在内存里 */ }
+    return copy();
+  }
+  // status 为 null 表示“讲过”：新条目记为 explained，已有条目的状态不动。
+  function put(name, status, extra) {
+    const now = new Date().toISOString();
+    const existing = find(name);
+    if (existing) {
+      const before = JSON.stringify(existing);
+      if (status) existing.status = status;
+      Object.assign(existing, extra);
+      if (JSON.stringify(existing) === before) return false;
+      existing.updated = now;
+      return true;
+    }
+    record.concepts.push({ name, status: status || 'explained', explained_in: null, where: null, note: null, ...extra, updated: now });
+    return true;
+  }
+  const whereOf = (x) => (x.where && Array.isArray(x.where.ids) && x.where.ids[0]) || (x.where && x.where.page ? `PDF 第 ${x.where.page} 页` : null);
+  return {
+    get: copy,
+    save(version, concepts) {
+      if (version !== record.version) throw new ApiError('记录已经在别处改过，请重新读取。', 'http', 409);
+      const now = new Date().toISOString();
+      record.concepts = concepts.map((c) => {
+        const old = find(c.name);
+        return { name: c.name, status: c.status, note: c.note || null, explained_in: old ? old.explained_in : null, where: old ? old.where : null, updated: old && old.status === c.status && (old.note || null) === (c.note || null) ? old.updated : now };
+      });
+      return commit(true);
+    },
+    displayed(explanation) {
+      if (!explanation || explanation.type === 'overview') return copy();
+      let touched = false;
+      for (const concept of explanation.concepts || []) {
+        touched = put(concept.name, null, { explained_in: explanation.id, where: whereOf(explanation) }) || touched;
+      }
+      return commit(touched);
+    },
+    feedback(explanation, { kind, concept, note }) {
+      const extra = note ? { note } : {};
+      let touched = false;
+      if (kind === 'unclear') {
+        for (const item of (explanation && explanation.concepts) || []) {
+          const old = find(item.name);
+          if (old && old.status === 'known') continue; // 读者说过已经会的，不因为“这一轮不懂”改掉
+          touched = put(item.name, 'unsure', extra) || touched;
+        }
+      } else {
+        if (!concept) throw new ApiError('要说明是哪个词。', 'http', 400);
+        touched = put(concept, kind === 'known' ? 'known' : 'unsure', extra);
+      }
+      return commit(touched);
+    },
+  };
+}
+
 function mockApi() {
   let canned = null;
   let served = 0;
   let content = null;
+  const record = mockRecord();
+  async function loadCanned() {
+    if (!canned) canned = (await getJson(`mock/explanations-${MOCK_PAPER}.json`)).explanations;
+    return canned;
+  }
   async function loadContent() {
     if (!content) content = await getJson(`mock/paper-${MOCK_PAPER}.json`);
     return content;
@@ -131,10 +217,18 @@ function mockApi() {
     },
     getContent: loadContent,
     listExplanations: async () => [],
-    // 样例模式不写任何读者数据。
-    acknowledge: async (paper, id) => ({ id, displayed: true }),
+    // 样例模式不写任何读者数据；概念记录只留在这个标签页里。
+    async acknowledge(paper, id) {
+      record.displayed((await loadCanned()).find((x) => x.id === id));
+      return { id, displayed: true };
+    },
+    getRecord: async () => record.get(),
+    saveRecord: async (paper, version, concepts) => record.save(version, concepts),
+    async sendFeedback(paper, feedback) {
+      return record.feedback((await loadCanned()).find((x) => x.id === feedback.explanation), feedback);
+    },
     async explain(paper, request, onStatus) {
-      if (!canned) canned = (await getJson(`mock/explanations-${MOCK_PAPER}.json`)).explanations;
+      await loadCanned();
       if (served >= canned.length) {
         throw new ApiError('样例数据只有这几轮。接上后端后，这里会继续往下讲。', 'model');
       }

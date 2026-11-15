@@ -6,6 +6,7 @@ import { createPaperView } from './paper.js';
 import { explanationCard, pendingCard, errorCard, noteCard, questionCard, setReceiptWarning } from './cards.js';
 import { createManager, backendLabel, chosenModel } from './manage.js';
 import { createReadingContext } from './reading-context.js';
+import { createRecord } from './record.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -34,6 +35,18 @@ const state = {
 
 const paperView = createPaperView(els.paper, els.paperPane);
 const readingContext = createReadingContext($('reading-context'), refreshButtons);
+// 概念记录与反馈（4.7 节）。位置文字认得出来时，点一下让左边的原文跳过去。
+const record = createRecord({
+  api: () => state.api,
+  paper: () => state.paper,
+  busy: () => state.busy,
+  onChange: refreshButtons,
+  jump(where) {
+    const target = paperView.resolve(where);
+    if (!target) return false;
+    return target.page ? paperView.gotoPage(target.page) : paperView.flash(target.id);
+  },
+});
 
 function setStatus(text) {
   els.status.textContent = text || '';
@@ -46,9 +59,11 @@ function hasQuestionInput() {
 
 // “继续”要等上一轮的显示状态记好之后才放开，否则后端会重复返回同一轮。
 function refreshButtons() {
-  const blocked = state.busy || !state.paper || state.unacked.size > 0 || !readingContext.ready();
+  const blocked = state.busy || !state.paper || state.unacked.size > 0 || !readingContext.ready() || !record.ready();
   els.continueBtn.disabled = blocked || state.ended;
-  els.continueBtn.title = !readingContext.ready() ? '先确认本次阅读的基础。' : state.ended ? '主线已经讲完，可以继续提问。' : '';
+  els.continueBtn.title = !readingContext.ready() ? '先确认本次阅读的基础。'
+    : !record.ready() ? '先确认上次读这篇时的记录。'
+      : state.ended ? '主线已经讲完，可以继续提问。' : '';
   els.askBtn.disabled = blocked || !hasQuestionInput();
 }
 
@@ -134,6 +149,8 @@ function painted() {
 async function acknowledge(card, explanation) {
   try {
     await state.api.acknowledge(state.paper, explanation.id);
+    // 这一轮讲过的概念已经记进记录：先读到新的版本，再放开“继续”。
+    await record.refresh();
     state.unacked.delete(explanation.id);
     setReceiptWarning(card, null);
   } catch {
@@ -141,6 +158,13 @@ async function acknowledge(card, explanation) {
     setReceiptWarning(card, () => acknowledge(card, explanation));
   }
   refreshButtons();
+}
+
+// 最新一份讲解的编号（卡片是按顺序加的）。
+function lastExplanationId() {
+  let last = null;
+  for (const id of state.cards.keys()) last = id;
+  return last;
 }
 
 // 显示一份讲解：同一编号复用已有卡片，显示出来之后再记“已显示”。
@@ -151,6 +175,9 @@ async function showExplanation(explanation, { select = true } = {}) {
   if (!card) {
     card = explanationCard(explanation);
     linkRoute(card);
+    if (record.supported() && explanation.type !== 'overview') {
+      card.append(record.feedbackBar(explanation, () => lastExplanationId() === explanation.id));
+    }
     state.cards.set(explanation.id, card);
     els.cards.append(card);
     showAsked(card, explanation.asked);
@@ -282,6 +309,7 @@ async function recover() {
       await showExplanation(history[i], { select: i === history.length - 1 && !known });
     }
     await refreshPending();
+    await record.refresh();
     setStatus(history.length ? '' : '还没有生成好的讲解。');
   } catch (error) {
     setStatus(error.message || '恢复失败，请稍后再试。');
@@ -314,8 +342,8 @@ function describeFailure(error) {
 
 // 请求一轮讲解。每次只返回一份讲解，这里不自动接着请求下一轮。
 async function requestExplanation(request, questionInfo, restoreInput) {
-  if (state.busy || !state.paper || state.unacked.size || !readingContext.ready()) return;
-  request = readingContext.withRequest(request);
+  if (state.busy || !state.paper || state.unacked.size || !readingContext.ready() || !record.ready()) return;
+  request = record.withRequest(readingContext.withRequest(request));
   setBusy(true);
   clearNotices();
   els.cards.querySelectorAll('.card-start').forEach((c) => c.remove());
@@ -404,7 +432,7 @@ async function requestExplanation(request, questionInfo, restoreInput) {
 }
 
 function submitQuestion() {
-  if (state.busy || state.unacked.size || !readingContext.ready()) return;
+  if (state.busy || state.unacked.size || !readingContext.ready() || !record.ready()) return;
   const question = els.question.value.trim();
   const request = { mode: 'ask' };
   const info = { question };
@@ -567,6 +595,8 @@ async function start() {
     state.paper = meta.paper;
     // 每次打开都重新问；历史仅用于回看，不作为这一次的基础。
     readingContext.reset(manager.live);
+    // 上次的概念记录：不是空的就先摆出来，确认之后才能继续。
+    await record.load();
     const content = await state.api.getContent(state.paper);
     // PDF 的正文接口只给出文件地址，标题和作者取自论文信息。
     state.content = { ...meta, ...content };

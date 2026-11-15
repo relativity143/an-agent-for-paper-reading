@@ -17,6 +17,7 @@
   </div>
   <div class="topbar-side">
     <ol id="steps" class="steps" aria-label="主线进度"></ol>
+    <button type="button" id="record-btn" class="chip chip-btn" hidden>记录</button>
     <button type="button" id="library-btn" class="chip chip-btn" hidden>论文</button>
     <button type="button" id="mode-chip" class="chip chip-btn" hidden></button>
   </div>
@@ -46,6 +47,7 @@
         <button type="button" data-context-edit class="btn btn-small">修改本次基础</button>
       </div>
     </section>
+    <section id="record-confirm" class="record-confirm" aria-label="上次读这篇时的记录" hidden></section>
     <div id="cards" class="cards" aria-live="polite"></div>
 
     <form id="composer" class="composer">
@@ -81,6 +83,14 @@
     <button type="button" class="icon-btn" data-close aria-label="关闭">×</button>
   </header>
   <div id="library-body" class="dialog-body"></div>
+</dialog>
+
+<dialog id="record-dialog" class="dialog" aria-labelledby="record-heading">
+  <header class="dialog-head">
+    <h2 id="record-heading">概念记录</h2>
+    <button type="button" class="icon-btn" data-close aria-label="关闭">×</button>
+  </header>
+  <div id="record-body" class="dialog-body"></div>
 </dialog>
 
 <dialog id="settings-dialog" class="dialog" aria-labelledby="settings-heading">
