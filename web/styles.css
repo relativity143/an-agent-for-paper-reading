@@ -319,6 +319,15 @@ a.library-item:hover { border-color: var(--line-strong); }
 .backend-text { display: flex; flex-direction: column; }
 .backend-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .backend-note { font-size: 13px; color: var(--ink-soft); }
+.settings-fields { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; align-items: flex-start; }
+.settings-fields > .backend-list, .settings-fields > .settings-field { align-self: stretch; }
+.settings-fields:disabled { opacity: 0.75; }
+.settings-field { display: flex; flex-direction: column; gap: 4px; }
+.settings-field[hidden] { display: none; }
+.settings-label { font-size: 13px; color: var(--ink-soft); }
+.settings-field input { font: inherit; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--card-bg); color: inherit; max-width: 100%; }
+.settings-field input[type="number"] { width: 8em; }
+.pending-stop { margin-top: 8px; }
 .api-box { padding: 12px; border: 1px dashed var(--line); border-radius: 6px; }
 .api-box h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.08em; color: var(--ink-soft); }
 .api-details { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0 0 8px; font-size: 13.5px; }

@@ -1,5 +1,5 @@
-// 不用敲命令的那几件事：换论文、打开本地 PDF、选模型后端。
-// 接口见 docs/agent-architecture.md 4.5 节。论文标题、作者、后端返回的说明都当作文字显示。
+// 不用敲命令的那几件事：换论文、打开本地 PDF、选模型后端和模型、调时限。
+// 接口见 docs/agent-architecture.md 4.5、4.6 节。论文标题、作者、后端返回的说明都当作文字显示。
 
 import { MAX_UPLOAD_BYTES } from './api.js';
 
@@ -9,6 +9,22 @@ const BACKEND_NOTE = {
   codex: '用本机已经登录的 Codex。',
   api: '用配置文件里填的模型接口。',
 };
+
+const MIN_TIMEOUT = 30;
+const MAX_TIMEOUT = 600;
+// 模型名的写法，和后端的校验一致（docs/agent-architecture.md 4.6 节）。
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,99}$/;
+
+// 只有 Claude Code 和 Codex 能在页面上选模型；旧版服务不带 model 字段时也不显示。
+function hasModelChoice(backend) {
+  return backend.name !== 'api' && 'model' in backend;
+}
+
+// 当前后端选了哪个模型；跟随默认或读不到时是空字符串。
+export function chosenModel(settings) {
+  const backend = (settings.backends || []).find((b) => b.name === settings.backend);
+  return backend && hasModelChoice(backend) && typeof backend.model === 'string' ? backend.model : '';
+}
 
 export function backendLabel(name) {
   return BACKEND_LABEL[name] || name || '';
@@ -40,7 +56,7 @@ function readTime(value) {
   return date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-// current() 返回正在读的论文编号；onBackend(name) 在后端切换成功后调用。
+// current() 返回正在读的论文编号；onBackend(name, model) 在设置保存成功后调用。
 // busy() 返回现在是否正在生成讲解。
 export function createManager({ api, current, onBackend, busy = () => false }) {
   const libraryDialog = document.getElementById('library-dialog');
@@ -153,20 +169,54 @@ export function createManager({ api, current, onBackend, busy = () => false }) {
     view.focus();
   }
 
-  // 设置：只能选用哪个后端。密钥、地址和模型名都在本机的配置文件里，页面不填也不看密钥。
+  // 设置：选后端、给 Claude Code / Codex 选模型、调每次生成的时限，点“保存”一次写入。
+  // 模型 API 的地址、模型名和密钥只在本机的配置文件里，页面不填也不看密钥。
   function renderSettings(settings, message) {
     shownSettings = settings;
     const generating = busy();
-    const root = el('div', 'settings');
-    root.append(el('p', 'hint', '选择用哪个模型来讲解。切换后，下一轮讲解就生效。'));
+    const backends = settings.backends || [];
+    const root = el('form', 'settings');
+    root.noValidate = true;
+    root.append(el('p', 'hint', '选择用哪个模型来讲解。保存后，下一轮讲解就生效。'));
     const group = el('fieldset', 'backend-list');
     group.append(el('legend', 'sr-only', '模型后端'));
-    group.disabled = generating;
     const status = el('p', 'status settings-status',
-      generating ? '现在正在生成一轮讲解，生成完才能切换。完成后这里会自动放开。' : (message || ''));
+      generating ? '现在正在生成一轮讲解，生成完或停止后才能改。到时这里会自动放开。' : (message || ''));
     status.setAttribute('role', 'status');
 
-    for (const backend of settings.backends || []) {
+    // 每个后端各记一份模型名，换选项时不丢已经填的内容。空着表示跟随它自己的默认模型。
+    const models = new Map(backends.filter(hasModelChoice).map((b) => [b.name, b.model || '']));
+    let chosen = settings.backend;
+
+    const modelRow = el('label', 'settings-field');
+    const modelName = el('span', 'settings-label');
+    const modelInput = el('input');
+    modelInput.type = 'text';
+    modelInput.maxLength = 100;
+    modelInput.autocomplete = 'off';
+    modelInput.spellcheck = false;
+    modelInput.placeholder = '不填：跟随它自己的默认模型';
+    modelInput.setAttribute('list', 'model-suggestions');
+    const suggestions = el('datalist');
+    suggestions.id = 'model-suggestions';
+    const modelHint = el('span', 'hint');
+    modelRow.append(modelName, modelInput, suggestions, modelHint);
+    modelInput.addEventListener('input', () => models.set(chosen, modelInput.value));
+
+    function showModelRow() {
+      const backend = backends.find((b) => b.name === chosen);
+      modelRow.hidden = !backend || !models.has(chosen);
+      if (modelRow.hidden) return;
+      modelName.textContent = `${backendLabel(chosen)} 用哪个模型`;
+      modelInput.value = models.get(chosen);
+      const list = Array.isArray(backend.model_suggestions) ? backend.model_suggestions : [];
+      suggestions.replaceChildren(...list.map((name) => { const o = el('option'); o.value = name; return o; }));
+      modelHint.textContent = list.length
+        ? `可以从建议里选（${list.join('、')}），也可以填别的名字。列在这里不代表你的账号一定能用。`
+        : '填模型名；不填就用它自己的默认模型。';
+    }
+
+    for (const backend of backends) {
       const option = el('label', 'backend-option');
       const radio = el('input');
       radio.type = 'radio';
@@ -182,19 +232,65 @@ export function createManager({ api, current, onBackend, busy = () => false }) {
       text.append(head, el('span', 'backend-note', BACKEND_NOTE[backend.name] || ''));
       option.append(radio, text);
       group.append(option);
-      radio.addEventListener('change', async () => {
-        group.disabled = true;
-        status.textContent = '正在切换…';
-        try {
-          const updated = await api.setBackend(backend.name);
-          onBackend(updated.backend);
-          settingsBody.replaceChildren(renderSettings(updated, `已切换到 ${backendLabel(updated.backend)}。`));
-        } catch (error) {
-          settingsBody.replaceChildren(renderSettings(settings, error.message || '没能切换。'));
-        }
-      });
+      radio.addEventListener('change', () => { chosen = backend.name; showModelRow(); });
     }
-    root.append(group, status);
+    showModelRow();
+
+    // 时限：旧版服务不返回这一项，那时不显示。
+    const hasTimeout = Number.isInteger(settings.timeout_seconds);
+    const timeRow = el('label', 'settings-field');
+    const timeInput = el('input');
+    timeInput.type = 'number';
+    timeInput.min = String(MIN_TIMEOUT);
+    timeInput.max = String(MAX_TIMEOUT);
+    timeInput.step = '1';
+    timeInput.inputMode = 'numeric';
+    if (hasTimeout) timeInput.value = String(settings.timeout_seconds);
+    timeRow.append(el('span', 'settings-label', '每次生成最多等多少秒'), timeInput,
+      el('span', 'hint', `${MIN_TIMEOUT} 到 ${MAX_TIMEOUT} 之间的整数。模型的回答不合格时会自动重来一次，所以一轮最长可能等到这个数的两倍。`));
+    timeRow.hidden = !hasTimeout;
+
+    const save = el('button', 'btn btn-primary', '保存');
+    save.type = 'submit';
+    const fields = el('fieldset', 'settings-fields');
+    fields.append(group, modelRow, timeRow, save);
+    fields.disabled = generating;
+
+    root.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const changes = { backend: chosen };
+      if (models.has(chosen)) {
+        const model = models.get(chosen).trim();
+        if (model && !MODEL_NAME.test(model)) {
+          status.textContent = '模型名只能用字母、数字和 . _ : - [ ]，以字母或数字开头，最多 100 个字符。';
+          modelInput.focus();
+          return;
+        }
+        changes.model = model || null;
+      }
+      if (hasTimeout) {
+        const seconds = Number(timeInput.value);
+        if (!Number.isInteger(seconds) || seconds < MIN_TIMEOUT || seconds > MAX_TIMEOUT) {
+          status.textContent = `时限要填 ${MIN_TIMEOUT} 到 ${MAX_TIMEOUT} 之间的整数。`;
+          timeInput.focus();
+          return;
+        }
+        changes.timeout_seconds = seconds;
+      }
+      fields.disabled = true;
+      status.textContent = '正在保存…';
+      try {
+        const updated = await api.saveSettings(changes);
+        onBackend(updated.backend, chosenModel(updated));
+        const what = [backendLabel(updated.backend), chosenModel(updated) || '默认模型'].join(' · ');
+        settingsBody.replaceChildren(renderSettings(updated, `已保存：${what}。下一轮讲解生效。`));
+      } catch (error) {
+        // 没保存成：留着读者填的内容，只放开表单、写明原因。
+        fields.disabled = busy();
+        status.textContent = error.message || '没能保存。';
+      }
+    });
+    root.append(fields, status);
 
     const apiInfo = settings.api || {};
     const details = el('dl', 'api-details');
@@ -207,7 +303,7 @@ export function createManager({ api, current, onBackend, busy = () => false }) {
     }
     const apiBox = el('section', 'api-box');
     apiBox.append(el('h3', '', '模型 API 的配置'), details);
-    apiBox.append(el('p', 'hint', '接口地址、模型和密钥在本机数据目录下的 config.json 里填写（默认是 ~/.paperread/config.json），写法见 server/README.md。页面不接触密钥，这里只显示有没有配置。填好以后，在上面重新选一次“模型 API”，或者重启服务。'));
+    apiBox.append(el('p', 'hint', '接口地址、模型和密钥在本机数据目录下的 config.json 里填写（默认是 ~/.paperread/config.json），写法见 server/README.md。页面不接触密钥，这里只显示有没有配置。填好以后，在上面选“模型 API”再点保存，或者重启服务。'));
     root.append(apiBox);
     root.append(el('p', 'hint', '“可用”只表示本机装了、配置齐了。有没有登录，要到请求讲解时才知道；没登录时那一轮会报错。'));
     return root;

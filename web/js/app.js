@@ -4,7 +4,7 @@
 import { createApi } from './api.js';
 import { createPaperView } from './paper.js';
 import { explanationCard, pendingCard, errorCard, noteCard, questionCard, setReceiptWarning } from './cards.js';
-import { createManager, backendLabel } from './manage.js';
+import { createManager, backendLabel, chosenModel } from './manage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -152,7 +152,7 @@ async function showExplanation(explanation, { select = true } = {}) {
 function showAsked(card, asked) {
   if (!asked || !(asked.quote || asked.question)) return;
   // 刚才提问时先放的那张卡片，和“点继续后回答”的提示，由这一张代替。
-  els.cards.querySelectorAll('.card-question[data-provisional], .card-note').forEach((c) => c.remove());
+  els.cards.querySelectorAll('.card-question[data-provisional], .card-note, [data-pending]').forEach((c) => c.remove());
   const question = questionCard({
     quote: asked.quote, question: asked.question,
     page: Number.isInteger(asked.page) ? asked.page : null,
@@ -161,8 +161,34 @@ function showAsked(card, asked) {
   card.before(question);
 }
 
+// 后端还留着、没有回答的问题（论文信息里的 pending）：有就显示在最后，没有就拿掉。
+// 提问那一轮没讲成或被停止时，问题仍然留在后端，下一次点“继续”会回答它。
+function showPending(pending) {
+  els.cards.querySelectorAll('[data-pending]').forEach((c) => c.remove());
+  if (!pending || !(pending.quote || pending.question)) return false;
+  const question = questionCard({
+    quote: pending.quote, question: pending.question,
+    page: Number.isInteger(pending.page) ? pending.page : null,
+    where: typeof pending.where === 'string' ? pending.where : null,
+  });
+  const note = noteCard('这个问题已经留着，还没有回答。点“继续”后回答；想换一个问题，直接重新提问。');
+  question.dataset.pending = '1';
+  note.dataset.pending = '1';
+  els.cards.append(question, note);
+  return true;
+}
+
+async function refreshPending() {
+  if (state.api.mode !== 'live') return false;
+  try {
+    return showPending((await state.api.getPaper(state.paper)).pending);
+  } catch {
+    return els.cards.querySelector('[data-pending]') !== null;
+  }
+}
+
 function clearNotices() {
-  els.cards.querySelectorAll('.card-error').forEach((c) => c.remove());
+  els.cards.querySelectorAll('.card-error, .card-stopped').forEach((c) => c.remove());
 }
 
 // 从后端的历史记录恢复：补上还没显示的讲解，已经有的卡片不重复添加。
@@ -177,6 +203,7 @@ async function recover() {
       const known = state.cards.has(history[i].id);
       await showExplanation(history[i], { select: i === history.length - 1 && !known });
     }
+    await refreshPending();
     setStatus(history.length ? '' : '还没有生成好的讲解。');
   } catch (error) {
     setStatus(error.message || '恢复失败，请稍后再试。');
@@ -198,11 +225,10 @@ function describeFailure(error) {
       action: { label: '恢复', run: recover },
     };
   }
-  // 后端转述模型后端的原因时，有几句是英文，这里换成读者看得懂的说法。
-  if (/timed out/i.test(error.message || '')) {
+  if (/超时|timed out/i.test(error.message || '')) {
     return {
-      message: '模型在限定的时间内没有答完，这一轮没有保存。可以再试一次；长论文的导读比较慢，时限可以在本机 config.json 的 timeout_seconds 里调大（最大 600 秒），改完重启服务。',
-      action: null,
+      message: '模型在限定的时间内没有答完，这一轮没有保存。可以再试一次，或者点右上角的模型后端，换一个模型、把时限调大（最大 600 秒）。',
+      action: { label: '打开设置', run: () => state.manager.openSettings() },
     };
   }
   return { message: error.message || '这一轮没有讲成，可以再试一次。', action: null };
@@ -234,24 +260,57 @@ async function requestExplanation(request, questionInfo, restoreInput) {
     pending.querySelector('.pending-text').textContent = text;
   };
   const ticker = setInterval(showProgress, 1000);
+  // 停止：只对后端支持的情况显示按钮，拿到任务编号后才能点。
+  const stopBtn = pending.querySelector('.pending-stop');
+  let stopped = false;
+  const onTask = (task) => {
+    if (!state.api.cancelTask) return;
+    stopBtn.hidden = false;
+    stopBtn.addEventListener('click', async () => {
+      stopped = true;
+      stopBtn.disabled = true;
+      stopBtn.textContent = '正在停止…';
+      try {
+        await state.api.cancelTask(task);
+      } catch (error) {
+        // 没停成（比如本机进程没清理掉）：放开按钮，可以再点一次。
+        stopped = false;
+        stopBtn.disabled = false;
+        stopBtn.textContent = '停止这一轮';
+        phase = error.message || '没能停止，可以再点一次。';
+        showProgress();
+      }
+    });
+  };
   try {
     const explanation = await state.api.explain(state.paper, request, (text) => {
       phase = text;
       showProgress();
-    });
+    }, onTask);
     pending.remove();
-    if (request.mode === 'ask' && explanation.type === 'overview') {
+    const live = state.api.mode === 'live';
+    if (!live && request.mode === 'ask' && explanation.type === 'overview') {
       els.cards.append(noteCard('先给出了全文导读。你的问题已经留着，点“继续”后回答。'));
     }
     setStatus('');
     await showExplanation(explanation);
+    // 这一轮给的是导读或上一轮讲解时，问题还留在后端：换成“留着的问题”那张卡片。
+    if (await refreshPending() && questionEl) questionEl.remove();
   } catch (error) {
     pending.remove();
-    // 没讲成时把读者的输入放回去，不让问题丢掉。
+    // 提问的那一轮没讲成时，后端一般已经把问题留下了；没留下才把输入放回去，不让问题丢掉。
+    const queued = request.mode === 'ask' && await refreshPending();
     if (questionEl) questionEl.remove();
-    if (restoreInput) restoreInput();
-    const failure = describeFailure(error);
-    const card = errorCard(failure.message, failure.action);
+    if (!queued && restoreInput) restoreInput();
+    let card;
+    if (stopped && error.kind === 'model') {
+      // 读者自己停的，不算出错，也不算读过。
+      card = noteCard('已停止这一轮，没有保存讲解。现在可以换模型或调时限，然后再点“继续”。');
+      card.classList.add('card-stopped');
+    } else {
+      const failure = describeFailure(error);
+      card = errorCard(failure.message, failure.action);
+    }
     els.cards.append(card);
     card.scrollIntoView({ block: 'end', behavior: 'smooth' });
     setStatus('');
@@ -374,10 +433,11 @@ async function openPaper(input) {
   }
 }
 
-function showBackend(name) {
+function showBackend(name, model) {
   state.api.backend = name;
-  // 只说明用的是哪种后端，不表示模型已经登录或可用。
-  els.mode.textContent = name ? `后端：${backendLabel(name)}` : '已连接后端';
+  // 只说明用的是哪种后端、选了哪个模型，不表示模型已经登录或可用。
+  const label = [backendLabel(name), model].filter(Boolean).join(' · ');
+  els.mode.textContent = name ? `后端：${label}` : '已连接后端';
 }
 
 async function start() {
@@ -389,6 +449,10 @@ async function start() {
     state.manager = manager;
     if (manager.live) {
       showBackend(state.api.backend);
+      // 选了具体模型时，把模型名也显示在右上角；读不到就只显示后端。
+      state.api.getSettings().then((settings) => {
+        showBackend(settings.backend, chosenModel(settings));
+      }).catch(() => {});
       els.mode.title = '选择用哪个模型来讲解';
       els.mode.addEventListener('click', manager.openSettings);
       els.library.addEventListener('click', manager.openLibrary);
@@ -427,6 +491,7 @@ async function start() {
     for (let i = 0; i < history.length; i += 1) {
       await showExplanation(history[i], { select: i === history.length - 1 });
     }
+    showPending(meta.pending);
     setBusy(false);
     if (!history.length) {
       if (manager.live) {

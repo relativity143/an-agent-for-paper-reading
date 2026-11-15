@@ -80,8 +80,10 @@ function realApi(health) {
     // 论文列表、设置和上传（docs/agent-architecture.md 4.5 节）。
     listPapers: async () => (await getJson(`${base}/papers`)).papers || [],
     getSettings: () => getJson(`${base}/settings`),
-    // 页面只能改“用哪个后端”。密钥不经过页面，这里也不接受别的字段。
-    setBackend: (name) => sendJson('PUT', `${base}/settings`, { backend: name }),
+    // 页面能改三样：用哪个后端、它用哪个模型、每次生成最多等多久（4.6 节）。密钥不经过页面。
+    saveSettings: (changes) => sendJson('PUT', `${base}/settings`, changes),
+    // 停止正在生成的一轮。已经结束的任务也返回成功，不会删掉已保存的讲解。
+    cancelTask: (task) => postJson(`${base}/tasks/${encodeURIComponent(task)}/cancel`, {}),
     // 请求体就是文件本身；文件名只取名字，不带本机路径。
     uploadPdf: (file) => getJson(`${base}/papers/upload`, {
       method: 'POST',
@@ -94,8 +96,10 @@ function realApi(health) {
     listExplanations: (paper) => getJson(`${paperUrl(paper)}/explanations`),
     // 卡片真正显示出来之后才调用；后端据此记录“讲过”。
     acknowledge: (paper, id) => postJson(`${paperUrl(paper)}/explanations/${encodeURIComponent(id)}/displayed`, {}),
-    async explain(paper, request, onStatus) {
+    // onTask 拿到任务编号，“停止”要用它。
+    async explain(paper, request, onStatus, onTask) {
       const { task } = await postJson(`${paperUrl(paper)}/explain`, request);
+      if (onTask) onTask(task);
       return watchTask(`${base}/tasks/${encodeURIComponent(task)}/events`, onStatus);
     },
   };

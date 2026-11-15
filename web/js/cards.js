@@ -136,7 +136,8 @@ export function explanationCard(x) {
 export function pendingCard() {
   const card = document.createElement('div');
   card.className = 'card card-pending';
-  card.innerHTML = '<p class="pending-text">正在准备这一轮讲解…</p>';
+  card.innerHTML = '<p class="pending-text">正在准备这一轮讲解…</p>'
+    + '<button type="button" class="btn btn-small pending-stop" hidden>停止这一轮</button>';
   return card;
 }
 

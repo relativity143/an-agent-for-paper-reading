@@ -138,6 +138,12 @@ def pdf_bytes(pages):
     return out
 
 
+def current_cancellation():
+    """这一轮的取消状态。服务把它放在当前线程里（server.backends 的内部约定），拿不到就当作没有。"""
+    backends = sys.modules.get("server.backends")
+    return getattr(getattr(backends, "_TASK_CONTEXT", None), "cancellation", None)
+
+
 class ScriptedBackend:
     """按论文依次给出固定输出；输出是异常时就抛出它。"""
 
@@ -147,8 +153,15 @@ class ScriptedBackend:
 
     def generate(self, prompt, schema):
         # 真实模型一轮要一两分钟。加上等待，才能看到“生成中”时页面的样子。
-        if self.delay:
-            time.sleep(self.delay)
+        # 等的时候留意“停止”：被停止的这一轮不取固定输出，和真实后端一样马上结束。
+        deadline = time.monotonic() + self.delay
+        while True:
+            cancellation = current_cancellation()
+            if cancellation is not None:
+                cancellation.check()
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.1)
         # 只认“本轮材料”开头的那一个论文编号：阅读记录里也会出现别的论文的编号。
         current = re.search(r'本轮材料[^\n]*\n\{"paper": "([^"]+)"', prompt)
         for paper, queue in self.scripts.items():
