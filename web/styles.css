@@ -306,6 +306,8 @@ button.route-jump:focus-visible { outline: 2px solid var(--navy); outline-offset
 .reading-context-summary .btn { flex: none; min-height: 28px; padding: 0 10px; border-width: 1px; font-size: 12.5px; font-weight: 400; }
 /* 确认之后收成一行：完整内容在鼠标悬停的提示里，点“修改”能看到全文。 */
 .reading-context:has(> [data-context-editor][hidden]) { padding-block: 6px; }
+/* 选基础的时候讲解区还是空的：让清单多占些地方，少滚动。 */
+.reading-context:has(> [data-context-editor]:not([hidden])) { max-height: 72%; }
 .reading-context-summary p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* 概念记录：打开时的确认、记录对话框、卡片下面的反馈。 */

@@ -161,6 +161,23 @@ class ScriptedBackend:
             return {}
 
     @staticmethod
+    def prerequisites(material):
+        """基础清单的固定输出。名字和后面讲解里的概念对得上，选择才会反映到之后各轮的状态标签上。"""
+        pages = material.get("pdf_pages")
+        valid = material.get("valid_ids") or []
+        def where(preferred):
+            if pages:
+                return {"ids": [], "page": 1, "quote": PDF_PAGES[0][:40]}
+            return {"ids": [preferred if preferred in valid else valid[0]], "page": None, "quote": None}
+        names = ["绕数"] if pages else ["动量空间绕数", "非厄米哈密顿量", "本征值与本征向量"]
+        return {"items": [{
+            "name": name,
+            "description": f"固定样例：用一句浅显的话说明“{name}”是什么。",
+            "why": f"固定样例：这篇论文在哪里用到“{name}”。",
+            "where": where("S2.SS2.p1"),
+        } for name in names]}
+
+    @staticmethod
     def follow_record(output, record):
         """让输出里 assumes 的状态和读者的概念记录一致（接口约定 4.7 节），和真实模型该做的一样。"""
         known = {item["name"].strip().lower(): item for item in (record or {}).get("concepts", [])}
@@ -184,6 +201,9 @@ class ScriptedBackend:
         # 只认“本轮材料”开头的那一个论文编号：阅读记录里也会出现别的论文的编号。
         current = re.search(r'本轮材料[^\n]*\n\{"paper": "([^"]+)"', prompt)
         material = self.material(prompt)
+        if material.get("type") == "prerequisites":
+            # 开场的“本文需要哪些基础”：不占用讲解的固定输出，按论文给一份小清单。
+            return self.prerequisites(material)
         for paper, queue in self.scripts.items():
             if current and current.group(1) == paper:
                 repeat = material.get("repeat_point")
