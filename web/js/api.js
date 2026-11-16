@@ -103,7 +103,9 @@ function realApi(health) {
     // 概念地图的位置和批注（4.8 节）。后端还没有这个接口时返回 null，页面改存在浏览器里。
     async getMap(paper) {
       try {
-        return await getJson(`${paperUrl(paper)}/map`);
+        const value = await getJson(`${paperUrl(paper)}/map`);
+        if (value === null) throw new ApiError('地图响应不完整，请重试读取。', 'http', 200);
+        return value;
       } catch (error) {
         if (error.kind === 'http' && error.status === 404) return null;
         throw error;

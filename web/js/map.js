@@ -29,6 +29,29 @@ function rich(tag, className, text) {
   return node;
 }
 
+// 无效响应不能当成“还没有保存过”，否则下一次拖动可能覆盖另一份地图。
+function checkedLayout(value) {
+  const fail = () => { throw new Error('地图数据不完整，原数据未被覆盖。请重新读取。'); };
+  if (!value || !Number.isSafeInteger(value.version) || value.version < 0
+    || !Array.isArray(value.nodes) || value.nodes.length > 400
+    || !Array.isArray(value.notes) || value.notes.length > MAX_NOTES) fail();
+  const names = new Set(), notes = new Set();
+  const coordinates = (item) => item && Number.isInteger(item.x) && item.x >= 0 && item.x <= WIDTH
+    && Number.isInteger(item.y) && item.y >= 0 && item.y <= HEIGHT;
+  for (const node of value.nodes) {
+    if (!coordinates(node) || typeof node.name !== 'string' || !node.name.trim()
+      || Array.from(node.name.trim()).length > 80 || names.has(key(node.name))) fail();
+    names.add(key(node.name));
+  }
+  for (const note of value.notes) {
+    if (!coordinates(note) || typeof note.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(note.id)
+      || notes.has(note.id) || typeof note.text !== 'string' || !note.text.trim()
+      || Array.from(note.text).length > MAX_NOTE) fail();
+    notes.add(note.id);
+  }
+  return structuredClone(value);
+}
+
 // 立体三角：左面亮、右面暗，下面一小片影子。四种画法对应四种状态。
 function triangle(status, size) {
   const solid = status === 'known' || status === 'unsure' || status === 'untouched';
@@ -147,6 +170,9 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
   const stage = document.getElementById('map-stage');
   const frame = document.getElementById('map-frame');
   const status = document.getElementById('map-status');
+  const addNoteButton = document.getElementById('map-add-note');
+  const retryButton = document.getElementById('map-save-retry');
+  const reloadButton = document.getElementById('map-reload');
   let layout = { version: 0, nodes: [], notes: [] };
   let positions = new Map(); // 小写名字 → {x, y}
   let names = new Map();     // 小写名字 → 保存时用的名字
@@ -154,68 +180,105 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
   let scale = 1;
   let saveTimer = 0;
   let loaded = null;         // 已经读过哪篇论文的地图
+  let loading = false, loadError = false, saving = false;
+  let dirty = false, saveFailed = false, conflict = false, revision = 0;
 
   const localKey = () => `paperread-map:${paper()}`;
+  const editable = () => loaded === paper() && !loading && !loadError && !conflict;
 
-  async function load() {
-    if (loaded === paper()) return;
-    layout = { version: 0, nodes: [], notes: [] };
-    remote = false;
-    const source = api();
-    let fetched = null;
-    if (source && source.getMap) {
-      try { fetched = await source.getMap(paper()); } catch { fetched = null; }
+  function controls() {
+    stage.inert = loaded !== paper() || loading;
+    // 发生冲突或读取失败时仍可选中复制批注，但先停止编辑和拖动。
+    stage.querySelectorAll('.map-note textarea').forEach((text) => { text.readOnly = !editable(); });
+    stage.querySelectorAll('.map-note-remove').forEach((button) => { button.disabled = !editable(); });
+    addNoteButton.disabled = !editable();
+    retryButton.hidden = !dirty || !saveFailed || conflict || loadError;
+    retryButton.disabled = saving || loading;
+    reloadButton.disabled = saving || loading;
+    reloadButton.textContent = dirty ? '放弃改动并重新读取' : '重新读取地图';
+  }
+
+  async function load(force = false) {
+    if (loading || saving) return false;
+    if (!force && loaded === paper() && !loadError) return true;
+    const target = paper();
+    loading = true; controls();
+    status.textContent = '正在读取地图…';
+    try {
+      const source = api();
+      // 真实接口仅在 404 时返回 null；网络失败或损坏必须向读者报错。
+      const fetched = source?.getMap ? await source.getMap(target) : null;
+      let candidate;
+      const useRemote = fetched !== null;
+      if (useRemote) candidate = checkedLayout(fetched);
+      else {
+        const saved = localStorage.getItem(`paperread-map:${target}`);
+        const legacy = saved === null ? { version: 0, nodes: [], notes: [] } : { version: 0, ...JSON.parse(saved) };
+        // 旧页面曾把尚未填写的纸条一起存在浏览器里；它们没有正文，按原行为忽略。
+        // 只兼容此历史字段，不修复远程响应，也不重写浏览器原始数据。
+        if (Array.isArray(legacy.notes)) legacy.notes = legacy.notes.filter((note) => typeof note?.text !== 'string' || note.text.trim());
+        candidate = checkedLayout(legacy);
+      }
+      if (target !== paper()) return false;
+      // 验证成功后才换图；读取失败保留当前可见的草稿和原存储。
+      layout = candidate; remote = useRemote;
+      positions = new Map(layout.nodes.map((node) => [key(node.name), { x: node.x, y: node.y }]));
+      names = new Map(layout.nodes.map((node) => [key(node.name), node.name]));
+      loaded = target;
+      dirty = false; saveFailed = false; conflict = false; loadError = false;
+      status.textContent = remote ? '地图已读取' : '保存在此浏览器';
+      return true;
+    } catch (error) {
+      loadError = true;
+      status.textContent = `${error.message || '地图读取失败。'} 当前内容已保留，请重新读取。`;
+      return false;
+    } finally {
+      loading = false; controls();
     }
-    if (fetched && Array.isArray(fetched.nodes) && Array.isArray(fetched.notes)) {
-      layout = fetched;
-      remote = true;
-    } else {
-      // 后端还没有这个接口：位置和批注存在这台电脑的浏览器里。
-      try {
-        const saved = JSON.parse(localStorage.getItem(localKey()));
-        if (saved && Array.isArray(saved.nodes) && Array.isArray(saved.notes)) layout = { version: 0, ...saved };
-      } catch { /* 读不到就从空的开始 */ }
-    }
-    positions = new Map();
-    names = new Map();
-    for (const node of layout.nodes) {
-      if (typeof node.name !== 'string' || !Number.isFinite(node.x) || !Number.isFinite(node.y)) continue;
-      positions.set(key(node.name), { x: node.x, y: node.y });
-      names.set(key(node.name), node.name);
-    }
-    layout.notes = layout.notes.filter((n) => n && typeof n.id === 'string' && typeof n.text === 'string');
-    loaded = paper();
   }
 
   async function persist() {
+    if (!editable() || !dirty || saving || saveFailed) return;
+    clearTimeout(saveTimer); saveTimer = 0;
+    const target = paper(), sentRevision = revision;
     const body = {
       nodes: [...positions].map(([id, p]) => ({ name: names.get(id) || id, x: Math.round(p.x), y: Math.round(p.y) })),
-      notes: layout.notes.map((n) => ({ id: n.id, x: Math.round(n.x), y: Math.round(n.y), text: n.text })),
+      notes: layout.notes.filter((n) => n.text.trim()).map((n) => ({ id: n.id, x: Math.round(n.x), y: Math.round(n.y), text: n.text })),
     };
-    if (!remote) {
-      try { localStorage.setItem(localKey(), JSON.stringify(body)); status.textContent = ''; } catch { status.textContent = '位置没能存下来（浏览器不让保存）。'; }
-      return;
-    }
+    saving = true; controls(); status.textContent = '正在保存地图…';
     try {
-      const saved = await api().saveMap(paper(), layout.version, body.nodes, body.notes);
-      layout.version = saved.version;
-      status.textContent = '';
-    } catch (error) {
-      if (error.status === 409) {
-        // 别处改过：读到最新的再画一遍，这一次的改动不强行盖上去。
-        loaded = null;
-        await load();
-        draw();
-        status.textContent = '地图在别处改过了，已经读到最新的；刚才那一下没有保存，请再拖一次。';
+      // 同一时间只发一份。响应返回后，用它的新版本保存期间发生的后续编辑。
+      if (remote) {
+        const saved = checkedLayout(await api().saveMap(target, layout.version, body.nodes, body.notes));
+        layout.version = saved.version;
       } else {
-        status.textContent = error.message || '位置没能保存。';
+        checkedLayout({ version: 0, ...body });
+        localStorage.setItem(localKey(), JSON.stringify(body));
       }
+      dirty = revision !== sentRevision;
+      status.textContent = dirty ? '还有改动待保存…' : remote ? '地图已保存' : '已保存在此浏览器';
+    } catch (error) {
+      saveFailed = true;
+      clearTimeout(saveTimer); saveTimer = 0;
+      if (error.status === 409) {
+        conflict = true;
+        status.textContent = '地图在别处改过了，本页改动尚未保存。请先保留需要的批注，再重新读取最新地图。';
+      } else {
+        status.textContent = `${error.message || '保存失败。'} 尚未确认保存，本页改动已保留，请重试。`;
+      }
+    } finally {
+      saving = false; controls();
+      if (dirty && !saveFailed && !conflict) await persist();
     }
   }
 
   // 拖动时会连着触发很多次，等手停下来再存。
   function saveSoon() {
+    dirty = true; revision += 1;
     clearTimeout(saveTimer);
+    controls();
+    if (saveFailed || conflict || loadError) return;
+    status.textContent = saving ? '正在保存，后续改动等待保存…' : '有改动待保存…';
     saveTimer = setTimeout(() => { saveTimer = 0; persist(); }, 500);
   }
 
@@ -229,13 +292,14 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
   // 让一个元素可以拖。moved(x, y) 在位置变化时调用，done(wasDrag) 在松手时调用。
   function draggable(node, get, moved, done) {
     node.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 || event.target.closest('textarea, button, .map-info')) return;
+      if (!editable() || event.button !== 0 || event.target.closest('textarea, button, .map-info')) return;
       const origin = get();
       const startX = event.clientX;
       const startY = event.clientY;
       let dragging = false;
       try { node.setPointerCapture(event.pointerId); } catch { /* 抓不住时仍然能拖 */ }
       const move = (e) => {
+        if (!editable()) return;
         const dx = (e.clientX - startX) / scale;
         const dy = (e.clientY - startY) / scale;
         if (!dragging && Math.hypot(dx, dy) < 4) return;
@@ -377,15 +441,13 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
     text.rows = 3;
     text.setAttribute('aria-label', '批注');
     text.placeholder = '写点什么…';
-    text.addEventListener('input', () => { note.text = text.value; });
-    text.addEventListener('change', () => {
-      // 空的批注不保存：留着它在图上，等写了字再存。
-      if (note.text.trim()) saveSoon();
-    });
+    // 输入时登记改动，关图会立即冲掉等待计时；空纸条不发给后端。
+    text.addEventListener('input', () => { if (editable()) { note.text = text.value; saveSoon(); } });
     const remove = el('button', 'icon-btn map-note-remove', '×');
     remove.type = 'button';
     remove.setAttribute('aria-label', '撕掉这张批注');
     remove.addEventListener('click', () => {
+      if (!editable()) return;
       layout.notes = layout.notes.filter((n) => n !== note);
       card.remove();
       saveSoon();
@@ -400,6 +462,7 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
   }
 
   function addNote() {
+    if (!editable()) return;
     if (layout.notes.length >= MAX_NOTES) { status.textContent = `批注最多 ${MAX_NOTES} 张。`; return; }
     const count = layout.notes.length;
     const note = { id: `n-${Date.now().toString(36)}-${count}`, x: 520 + (count % 5) * 36, y: 300 + (count % 5) * 30, text: '' };
@@ -411,22 +474,36 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
 
   async function open() {
     if (!record()) return;
-    status.textContent = '';
     dialog.showModal();
-    await load();
+    if (!await load()) return;
     // 没写字的批注不带到下一次。
     layout.notes = layout.notes.filter((n) => n.text.trim());
     draw();
+    controls();
   }
 
   button.addEventListener('click', open);
-  document.getElementById('map-add-note').addEventListener('click', addNote);
+  addNoteButton.addEventListener('click', addNote);
+  retryButton.addEventListener('click', () => {
+    if (!editable() || saving) return;
+    saveFailed = false;
+    persist();
+  });
+  reloadButton.addEventListener('click', async () => {
+    if (loading || saving) return;
+    clearTimeout(saveTimer); saveTimer = 0;
+    if (await load(true)) { draw(); controls(); }
+  });
   dialog.addEventListener('click', (event) => {
     if (event.target.closest('[data-close]')) dialog.close();
   });
   dialog.addEventListener('close', () => {
     // 关上时把还没存的改动存掉。
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; persist(); }
+    clearTimeout(saveTimer); saveTimer = 0;
+    if (dirty && !saveFailed) persist();
+  });
+  window.addEventListener('beforeunload', (event) => {
+    if (dirty || saving) { event.preventDefault(); event.returnValue = ''; }
   });
   new ResizeObserver(fit).observe(frame);
 
