@@ -77,7 +77,7 @@ function buildGraph(record, explanations) {
   const add = (name, extra) => {
     if (typeof name !== 'string' || !name.trim()) return null;
     const id = key(name);
-    if (!nodes.has(id)) nodes.set(id, { name: name.trim(), status: 'untouched', where: null, note: null, latest: false, ...extra });
+    if (!nodes.has(id)) nodes.set(id, { name: name.trim(), status: 'untouched', where: null, note: null, latest: false, step: null, ...extra });
     return id;
   };
   const link = (a, b) => {
@@ -95,6 +95,9 @@ function buildGraph(record, explanations) {
       continue;
     }
     const expanded = (x.concepts || []).map((c) => add(c && c.name)).filter(Boolean);
+    // 这个概念最早是在主线的哪一步讲的：用来给地图分区。
+    const step = x.progress && Number.isInteger(x.progress.step) ? x.progress.step : null;
+    for (const c of expanded) if (step !== null && nodes.get(c).step === null) nodes.get(c).step = step;
     const assumed = (x.assumes || []).map((a) => add(a && a.concept)).filter(Boolean);
     const mentioned = (x.unexpanded || []).map((name) => add(name)).filter(Boolean);
     for (const a of assumed) for (const c of expanded) link(a, c);
@@ -164,7 +167,7 @@ function placeNew(graph, positions) {
 // api() 返回接口对象；paper() 返回论文编号；title() 返回论文标题；
 // record() 返回当前的概念记录（没有这个功能时是 null）；explanations() 返回按顺序排好的讲解；
 // jump(where) 让左边的原文跳到一个位置，跳成了返回 true；openRecord() 打开概念记录。
-export function createMap({ api, paper, title, record, explanations, jump, openRecord }) {
+export function createMap({ api, paper, title, record, explanations, steps, jump, openRecord }) {
   const button = document.getElementById('map-btn');
   const dialog = document.getElementById('map-dialog');
   const stage = document.getElementById('map-stage');
@@ -345,7 +348,79 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
     drawLines();
 
     const layer = el('div', 'map-layer');
+    const regions = el('div', 'map-regions');
     const here = graph.route[graph.route.length - 1];
+    const drawn = []; // 每个三角：{id, node, item, label, size}
+
+    // 分区标题：同一步里讲的概念（两个以上）上方写这一步的名字。跟着三角的位置算，不保存。
+    function drawRegions() {
+      const names = new Map((steps() || []).map((s) => [s.step, s.name]));
+      const groups = new Map();
+      for (const entry of drawn) {
+        if (entry.node.step === null || entry.node.status === 'untouched' || !names.has(entry.node.step)) continue;
+        if (!groups.has(entry.node.step)) groups.set(entry.node.step, []);
+        groups.get(entry.node.step).push(positions.get(entry.id));
+      }
+      const titles = [];
+      for (const [step, spots] of groups) {
+        if (spots.length < 2) continue;
+        const text = names.get(step);
+        const label = el('div', 'map-region', Array.from(text).length > 14 ? `${Array.from(text).slice(0, 14).join('')}…` : text);
+        const x = spots.reduce((sum, p) => sum + p.x, 0) / spots.length;
+        const y = Math.min(...spots.map((p) => p.y)) - 92;
+        label.style.left = `${Math.min(WIDTH - 220, Math.max(180, x))}px`;
+        label.style.top = `${Math.max(120, y)}px`;
+        titles.push(label);
+      }
+      regions.replaceChildren(...titles);
+    }
+
+    // 给每个标签挑位置：在三角四周的八个位置里选压着别人最少的一个。实在放不下的小标签先收起，鼠标移上去再显示。
+    function arrangeLabels() {
+      const boxes = [
+        { x: 0, y: 0, w: 470, h: 122 },                 // 左上角的标题
+        { x: WIDTH - 290, y: 0, w: 290, h: 270 },       // 右上角的图例
+      ];
+      for (const entry of drawn) {
+        const spot = positions.get(entry.id);
+        const tall = entry.size * 30 / 28;
+        boxes.push({ x: spot.x - entry.size / 2, y: spot.y - tall * 0.87, w: entry.size, h: tall });
+        if (entry.id === here) boxes.push({ x: spot.x - 40, y: spot.y + 6, w: 84, h: 28 });
+      }
+      const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
+        * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+      const rank = (entry) => (entry.node.latest ? 0 : entry.node.status === 'untouched' ? 2 : 1);
+      for (const entry of [...drawn].sort((a, b) => rank(a) - rank(b))) {
+        const spot = positions.get(entry.id);
+        const w = entry.label.offsetWidth;
+        const h = entry.label.offsetHeight;
+        const r = entry.size / 2 + 4;
+        const tall = entry.size * 30 / 28 * 0.87;
+        const options = [
+          [r, -h - 2], [-r - w, -h - 2],                 // 右、左
+          [r, -tall - h * 0.6], [r, 2],                  // 右上、右下
+          [-r - w, -tall - h * 0.6], [-r - w, 2],        // 左上、左下
+          [-w / 2, -tall - h - 4], [-w / 2, 8],          // 正上、正下
+        ];
+        let best = options[0];
+        let bestCost = Infinity;
+        let bestHit = 0;
+        options.forEach(([dx, dy], index) => {
+          const box = { x: spot.x + dx, y: spot.y + dy, w, h };
+          let hit = 0;
+          for (const other of boxes) hit += overlap(box, other);
+          const outside = w * h - overlap(box, { x: 4, y: 4, w: WIDTH - 8, h: HEIGHT - 8 });
+          const cost = hit + outside * 4 + index * 12;
+          if (cost < bestCost) { bestCost = cost; best = [dx, dy]; bestHit = hit + outside; }
+        });
+        entry.label.style.left = `${Math.round(best[0])}px`;
+        entry.label.style.top = `${Math.round(best[1])}px`;
+        entry.label.style.right = 'auto';
+        const crowded = entry.node.status === 'untouched' && bestHit > w * h * 0.3;
+        entry.item.classList.toggle('map-quiet', crowded);
+        if (!crowded) boxes.push({ x: spot.x + best[0], y: spot.y + best[1], w, h });
+      }
+    }
     for (const [id, node] of graph.nodes) {
       const spot = positions.get(id);
       const size = node.latest ? 38 : node.status === 'untouched' ? 22 : 28;
@@ -365,9 +440,16 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
         item.style.top = `${y}px`;
         item.classList.toggle('map-flip', x > WIDTH - 330);
         drawLines();
-      }, (wasDrag) => { if (wasDrag) saveSoon(); else select(); });
+      }, (wasDrag) => {
+        if (!wasDrag) { select(); return; }
+        // 松手后别的标签让一让，分区标题跟着挪。
+        arrangeLabels();
+        drawRegions();
+        saveSoon();
+      });
       item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
       layer.append(item);
+      drawn.push({ id, node, item, label: item.querySelector('.map-label'), size });
     }
 
     for (const note of layout.notes) layer.append(noteCard(note));
@@ -375,7 +457,10 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
     const empty = graph.nodes.size === 0
       ? el('p', 'map-empty', '还没有概念。每讲完一轮，讲过的概念会出现在这张图上。')
       : null;
-    stage.replaceChildren(...[el('div', 'map-wash'), svg, layer, cartouche(), legend(), empty].filter(Boolean));
+    stage.replaceChildren(...[el('div', 'map-wash'), regions, svg, layer, cartouche(), legend(), empty].filter(Boolean));
+    // 要等标签进了页面才量得出宽度。
+    arrangeLabels();
+    drawRegions();
     if (added) saveSoon();
     fit();
   }
@@ -400,7 +485,9 @@ export function createMap({ api, paper, title, record, explanations, jump, openR
     thin.append(el('span', 'map-legend-thin'), el('span', '', '细线：在同一轮讲解里一起出现'));
     const thick = el('div', 'map-legend-row');
     thick.append(el('span', 'map-legend-thick'), el('span', '', '粗线：这篇论文走过的路'));
-    box.append(thin, thick);
+    const region = el('div', 'map-legend-row');
+    region.append(el('span', 'map-legend-region', '大字'), el('span', '', '这些概念是在主线的哪一步讲的'));
+    box.append(thin, thick, region);
     return box;
   }
 

@@ -1,0 +1,105 @@
+{
+ "note": "手写的样例，供前端开发“读完之后”的四个阶段使用（接口约定 4.10 节）。内容是示意，没有逐句核对原文，不能当作对这篇论文的可靠讲解。术语表里的状态和讲过的位置由页面按样例模式的概念记录填。",
+ "recap": {
+  "type": "recap",
+  "steps": [
+   {"step": 2, "name": "拓扑与谱的诊断", "covered": [
+    {"point": "杂质为什么打断干净链的动量分块", "where": {"ids": ["S2.SS2.p1"], "page": null, "quote": null},
+     "foundations": ["平移对称性与动量 $k$", "动量空间绕数"],
+     "back": "解释了原来按动量 $k$ 逐块算绕数的办法为什么用不上，论文因此改用实空间绕数。"},
+    {"point": "左右本征态怎样配对", "where": {"ids": ["S2.SS2.p2"], "page": null, "quote": null},
+     "foundations": ["非厄米哈密顿量", "右向量与左向量", "双正交配对"],
+     "back": "式 (4) 里的 $|\\beta_R\\rangle\\langle\\beta_L|$ 就是这样配出来的，它是构造 $Q$ 的原料。"}
+   ]}
+  ],
+  "off_route": [],
+  "remaining": [
+   {"step": 3, "name": "单杂质基线", "range": "S3"},
+   {"step": 4, "name": "随机杂质与相边界", "range": "S4–S5"},
+   {"step": 5, "name": "有限尺寸与临界参数", "range": "S6"},
+   {"step": 6, "name": "结论与后续问题", "range": "S7"}
+  ],
+  "note": null,
+  "glossary": [
+   {"term": "平移对称性与动量 $k$", "meaning": "干净的链每个晶胞都一样，所以可以按动量 $k$ 把哈密顿量拆成互不相干的小块；掺了杂质以后这个拆法失效。", "first_seen": "S2.SS2.p1"},
+   {"term": "动量空间绕数", "meaning": "干净 SSH 链的拓扑判据：$k$ 走一圈时，一个二维矢量绕原点转了几圈。本文里它只适用于没有杂质的情况。", "first_seen": "S2.SS2.p1"},
+   {"term": "非厄米哈密顿量", "meaning": "不等于自己共轭转置的哈密顿量。本文里来自跳入和跳出强度不等的杂质。", "first_seen": "S2.SS2.p2"},
+   {"term": "右向量与左向量", "meaning": "非厄米矩阵的两套本征向量：$H|\\beta_R\\rangle = E_\\beta|\\beta_R\\rangle$ 和 $\\langle\\beta_L|H = E_\\beta\\langle\\beta_L|$。", "first_seen": "S2.SS2.p2"},
+   {"term": "双正交配对", "meaning": "左向量和右向量按 $\\langle\\alpha_L|\\beta_R\\rangle = \\delta_{\\alpha\\beta}$ 配对，代替厄米情形的正交归一。", "first_seen": "S2.SS2.p2"},
+   {"term": "$Q$", "meaning": "谱压平后的哈密顿量，式 (4)：只保留每个本征态在实线隙的哪一侧。", "first_seen": "S2.E4"},
+   {"term": "实空间绕数", "meaning": "不依赖动量的绕数定义，用 $Q$、手征算符 $\\Gamma$ 和位置算符在实空间里直接算，是本文定位相边界的主要工具。", "first_seen": "S2.SS2.p1"}
+  ],
+  "next": "回顾里哪条还不清楚，可以直接问；没有的话，可以从“读完之后”里开始完整讲解。"
+ },
+ "deep_outline": {
+  "type": "deep_outline",
+  "scope": "样例只覆盖模型和实空间绕数的定义两部分，加一段结论与证据；数值细节和有限尺寸分析不展开。",
+  "sections": [
+   {"n": 1, "title": "设定与假设", "range": "S2.SS1"},
+   {"n": 2, "title": "实空间绕数的定义", "range": "S2.SS2"},
+   {"n": 3, "title": "结论、证据与边界", "range": "S7"}
+  ]
+ },
+ "deep": [
+  {
+   "type": "deep", "section": 1, "sections_total": 3, "title": "设定与假设", "range": "S2.SS1",
+   "where": {"ids": ["S2.SS1.p1"], "page": null, "quote": null},
+   "assumes": [],
+   "foundations": [
+    {"name": "非厄米哈密顿量", "taught": false, "use": "杂质晶胞的跳跃不互易，整条链的哈密顿量因此非厄米。", "itself": null, "explained_at": "S2.SS2.p2"}
+   ],
+   "picture": "一条 SSH 链，按浓度 $r$ 随机把一部分晶胞换成杂质晶胞；杂质晶胞里向左和向右跳的强度不一样。要回答的是：相变点 $v = w$ 会不会因此移动。",
+   "body": "干净的链由式 (1) 给出，胞内跃迁为 $v$，胞间跃迁为 $w$。杂质晶胞把这两个跃迁分别换成不互易的一对，由参数 $h$ 和 $\\gamma$ 控制（式 (2)）。\n\n这里有两个约定要记住：其一，杂质只改跃迁，不加在位势，所以子晶格结构还在；其二，$\\gamma_i$ 和 $\\gamma_e$ 分别是胞内和胞间的不互易强度，论文区分二者相等（对称）和不等（不对称）两种配置。\n\n（样例正文到此为止，真实的讲解会把式 (1)、(2) 的每一项和适用条件写全。）",
+   "simplified_before": ["导读里说“杂质只改它附近的跳跃”，严格地说是把整个晶胞的两个跃迁都换掉，并且两个方向的强度不同。"],
+   "evidence": [],
+   "unexpanded": ["子晶格对称性"],
+   "progress": {"text": "第 1 段，共 3 段。下一段讲实空间绕数是怎样定义的。"},
+   "highlights": [{"ids": ["S2.SS1.p1"], "page": null, "quote": null, "label": "这一段"}]
+  },
+  {
+   "type": "deep", "section": 2, "sections_total": 3, "title": "实空间绕数的定义", "range": "S2.SS2",
+   "where": {"ids": ["S2.SS2.p2"], "page": null, "quote": null},
+   "assumes": [],
+   "foundations": [
+    {"name": "双正交配对", "taught": false, "use": "构造 $Q$ 时用它把左右本征态一一配起来。", "itself": null, "explained_at": "S2.SS2.p2"},
+    {"name": "手征算符 $\\Gamma$", "taught": true, "use": "实空间绕数的公式里要用它区分两个子晶格。", "itself": "$\\Gamma$ 在 A 子晶格上取 $+1$，在 B 子晶格上取 $-1$，是一个对角矩阵。它把“只在两个子晶格之间跳”这条性质写成一个算符关系。", "explained_at": null}
+   ],
+   "picture": "没有动量可用时，直接在实空间里算：先把哈密顿量压平成 $Q$，再用 $\\Gamma$ 和位置算符组合出一个迹，它在拓扑相取 1，在平庸相取 0。",
+   "body": "第一步是谱压平，式 (4)：$Q = \\sum_\\beta \\operatorname{sgn}(\\operatorname{Re} E_\\beta)\\,|\\beta_R\\rangle\\langle\\beta_L|$。这要求存在实线隙，也就是没有本征值落在虚轴上。\n\n第二步，把 $Q$ 按子晶格拆开，和位置算符组合后对链的中间一段取迹。只取中间一段是为了避开边界。\n\n（样例正文到此为止。）",
+   "simplified_before": [],
+   "evidence": [],
+   "unexpanded": ["实线隙", "位置算符"],
+   "progress": {"text": "第 2 段，共 3 段。最后一段讲结论由哪些证据支持。"},
+   "highlights": [{"ids": ["S2.SS2.p2", "S2.E4"], "page": null, "quote": null, "label": "这一段"}]
+  },
+  {
+   "type": "deep", "section": 3, "sections_total": 3, "title": "结论、证据与边界", "range": "S7",
+   "where": {"ids": ["S7.p1"], "page": null, "quote": null},
+   "assumes": [],
+   "foundations": [],
+   "picture": "主要结论是：不对称的杂质可以把相变点朝确定的方向推动，推动的幅度随杂质浓度变化。",
+   "body": "这一段只把结论和支持它的证据对上，不再引入新的推导。\n\n（样例正文到此为止。）",
+   "simplified_before": [],
+   "evidence": [
+    {"claim": "不对称杂质使临界点发生确定方向的移动。", "support": "不同杂质浓度下实空间绕数随 $v/w$ 的变化曲线，以及有限尺寸外推。", "strength": "数值证据，依赖有限尺寸标度；没有解析证明。", "limits": "只研究了一种杂质模型；高浓度下外推的不确定度变大。"}
+   ],
+   "unexpanded": [],
+   "progress": {"text": "第 3 段，共 3 段。完整讲解到这里结束。"},
+   "highlights": [{"ids": ["S7.p1"], "page": null, "quote": null, "label": "这一段"}]
+  }
+ ],
+ "position": {
+  "type": "position",
+  "items": [
+   {"role": "foundation", "ref": "[3]", "name": "Asbóth、Oroszlány、Pályi，《拓扑绝缘体短程》", "what": "系统讲了干净 SSH 链的能带、手征对称性和绕数。", "relation": "本文的干净链模型和记号沿用这类教材的写法，在它的基础上加入杂质。", "said_by": "authors", "checked": "citation", "url": "https://dx.doi.org/10.1007/978-3-319-25607-8"}
+  ],
+  "note": "样例只列了一项，并且只看了本文里引用它的地方，没有核对那本书的原文。"
+ },
+ "next_reading": {
+  "type": "next_reading",
+  "items": [
+   {"kind": "notes", "name": "Asbóth、Oroszlány、Pályi，《拓扑绝缘体短程》第 1 章", "why": "先把没有杂质的 SSH 链读通：能带、边缘态、绕数。本文默认读者熟悉这些。", "missing": ["动量空间绕数"], "ref": "[3]", "checked": "citation", "url": "https://dx.doi.org/10.1007/978-3-319-25607-8"}
+  ],
+  "note": "样例只列了一篇。"
+ }
+}

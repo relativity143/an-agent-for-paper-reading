@@ -124,8 +124,15 @@ a { color: var(--navy); }
 /* PDF 论文：每一页画在页面里（pdf-view.js），纸面保持白色。 */
 .paper.paper-pdf { max-width: none; padding: 16px 16px 48px; }
 .pdf-loading { margin: 24px 8px; color: var(--ink-soft); }
-.pdf-doc { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.pdf-sheet { position: relative; width: 100%; max-width: 980px; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
+/* 页面居中；放大到比面板宽时自动外边距变成 0，从左边开始排，可以横向滚动。 */
+.pdf-doc { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; --pdf-zoom: 1; }
+.pdf-tools { position: sticky; top: 8px; left: 8px; z-index: 4; height: 0; }
+.pdf-tools-bar { display: inline-flex; align-items: center; border: 1px solid rgba(27, 42, 51, 0.5); border-radius: 999px; background: rgba(253, 252, 248, 0.94); box-shadow: var(--shadow); overflow: hidden; }
+.pdf-tools-bar button { min-width: 30px; min-height: 28px; padding: 0 8px; border: 0; background: transparent; color: #1B2A33; font: inherit; font-size: 13px; cursor: pointer; }
+.pdf-tools-bar button + button { border-left: 1px solid rgba(27, 42, 51, 0.2); }
+.pdf-tools-bar button:disabled { opacity: 0.35; cursor: default; }
+.pdf-tools-bar button:focus-visible { outline: 2px solid var(--navy); outline-offset: -2px; }
+.pdf-sheet { position: relative; flex: none; width: calc(var(--pdf-zoom) * 100%); max-width: calc(var(--pdf-zoom) * 980px); margin-inline: auto; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
 .pdf-sheet canvas { display: block; width: 100%; height: 100%; }
 .pdf-sheet::after { content: "第 " attr(data-page) " 页"; position: absolute; top: 6px; right: 6px; z-index: 2; padding: 1px 7px; border-radius: 999px; background: rgba(27, 42, 51, 0.72); color: #fff; font-family: var(--sans); font-size: 11px; line-height: 1.6; pointer-events: none; }
 .pdf-sheet.flash { animation: pdf-flash 1.2s ease-out; }
@@ -520,4 +527,44 @@ a.library-item:hover { border-color: var(--line-strong); }
 .map-note-remove { position: absolute; right: -10px; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: #3D3520; color: #FFF6C9; font-size: 14px; opacity: 0; }
 .map-note:hover .map-note-remove, .map-note:focus-within .map-note-remove { opacity: 1; }
 .map-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; padding: 10px 16px; background: rgba(251, 248, 238, 0.94); border: 1px solid #1B2A33; }
+/* 分区标题：主线的步骤名，写在那一步讲的概念上方。标签自己找位置（map.js 里算），放不下的小标签先收起。 */
+.map-regions { position: absolute; inset: 0; pointer-events: none; }
+.map-region { position: absolute; transform: translateX(-50%); font-family: "Songti SC", "Noto Serif SC", serif; font-weight: 700; font-size: 22px; letter-spacing: 0.3em; color: #2A261C; white-space: nowrap; text-shadow: 0 0 4px #F6EFD9, 0 0 8px #F6EFD9, 0 0 12px #F6EFD9; }
+.map-legend-region { flex: none; width: 28px; font-family: "Songti SC", "Noto Serif SC", serif; font-weight: 700; font-size: 13px; }
+.map-quiet .map-label { display: none; }
+.map-node:hover, .map-node:focus-visible { z-index: 8; }
+.map-quiet:hover .map-label, .map-quiet:focus-visible .map-label { display: block; }
+
+/* 读完之后的四个阶段（cards.js）：入口的菜单，和回顾、完整讲解、领域位置、下一篇的卡片。 */
+.stage-wrap { position: relative; }
+.stage-menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 10; min-width: 250px; padding: 4px; display: flex; flex-direction: column; background: var(--card-bg); border: 1.5px solid var(--line-strong); border-radius: 6px; box-shadow: var(--shadow); }
+.stage-menu[hidden] { display: none; }
+.stage-menu button { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.stage-menu button:hover:not(:disabled), .stage-menu button:focus-visible { background: var(--accent-wash); outline: none; }
+.stage-menu button:disabled { opacity: 0.5; cursor: not-allowed; }
+.stage-hint { font-size: 12px; color: var(--ink-soft); }
+.where-text { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+.recap-step + .recap-step { margin-top: 10px; }
+.recap-points { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.recap-found { color: var(--ink-soft); font-size: 13px; }
+.table-wrap { overflow-x: auto; }
+.glossary { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.glossary th, .glossary td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.glossary thead th { font-size: 12px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+.glossary tbody th { font-weight: 600; min-width: 6em; }
+.glossary tbody th .pill { display: inline-block; margin-top: 4px; font-weight: 400; }
+.glossary td:nth-child(2) { min-width: 11em; }
+.deep-foundations { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.deep-itself { margin-top: 4px; padding: 8px 10px; background: var(--accent-wash); border-radius: 4px; }
+.deep-itself > :first-child { margin-top: 0; }
+.deep-itself > :last-child { margin-bottom: 0; }
+.evidence-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 10px; }
+.evidence-list p { margin: 0; }
+.evidence { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 4px 0 0; }
+.evidence dt { font-size: 13px; color: var(--ink-soft); }
+.evidence dd { margin: 0; }
+.field-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 14px; }
+ul.field-list { list-style: none; padding-left: 0; }
+.field-list p { margin: 0 0 3px; }
+.source-line { font-size: 12.5px; color: var(--ink-soft); }
 

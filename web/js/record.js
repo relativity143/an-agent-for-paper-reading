@@ -289,6 +289,7 @@ export function createRecord({ api, paper, busy, onChange, jump }) {
     const terms = [];
     for (const name of [
       ...(explanation.concepts || []).map((c) => c && c.name),
+      ...(explanation.foundations || []).map((f) => f && f.name),
       ...(explanation.assumes || []).map((a) => a && a.concept),
       ...(explanation.unexpanded || []),
     ]) {

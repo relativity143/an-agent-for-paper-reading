@@ -76,6 +76,8 @@ function realApi(health) {
   return {
     mode: 'live',
     backend: typeof health.backend === 'string' ? health.backend : null,
+    // 后端支持哪些可选功能（4.10 节）；旧版后端没有这个字段。
+    features: Array.isArray(health.features) ? health.features : [],
     defaultPaper: null,
     // 论文列表、设置和上传（docs/agent-architecture.md 4.5 节）。
     listPapers: async () => (await getJson(`${base}/papers`)).papers || [],
@@ -184,9 +186,13 @@ function mockRecord() {
       return commit(true);
     },
     displayed(explanation) {
-      if (!explanation || explanation.type === 'overview') return copy();
+      if (!explanation || !['point', 'deep'].includes(explanation.type)) return copy();
       let touched = false;
-      for (const concept of explanation.concepts || []) {
+      // 逐点讲解记它展开的概念；完整讲解的一段只记当场补讲的基础。
+      const taught = explanation.type === 'deep'
+        ? (explanation.foundations || []).filter((f) => f.taught)
+        : (explanation.concepts || []);
+      for (const concept of taught) {
         touched = put(concept.name, null, { explained_in: explanation.id, where: whereOf(explanation) }) || touched;
       }
       return commit(touched);
@@ -195,7 +201,10 @@ function mockRecord() {
       const extra = note ? { note } : {};
       let touched = false;
       if (kind === 'unclear') {
-        for (const item of (explanation && explanation.concepts) || []) {
+        const expanded = explanation && explanation.type === 'deep'
+          ? (explanation.foundations || []).filter((f) => f.taught)
+          : (explanation && explanation.concepts) || [];
+        for (const item of expanded) {
           const old = find(item.name);
           if (old && old.status === 'known') continue; // 读者说过已经会的，不因为“这一轮不懂”改掉
           touched = put(item.name, 'unsure', extra) || touched;
@@ -218,6 +227,37 @@ function mockApi() {
     if (!canned) canned = (await getJson(`mock/explanations-${MOCK_PAPER}.json`)).explanations;
     return canned;
   }
+  // “读完之后”的四个阶段（4.10 节）的样例。deepDone 记完整讲解讲到第几段，0 表示目录还没给。
+  let stages = null;
+  let deepDone = -1;
+  let stageCount = 0;
+  const produced = new Map(); // 样例模式里已经给出的阶段对象，回执和反馈按编号找它
+  async function stage(mode) {
+    if (!stages) stages = await getJson(`mock/stages-${MOCK_PAPER}.json`);
+    let source;
+    if (mode === 'deep') {
+      if (deepDone >= stages.deep.length) throw new ApiError('完整讲解已经讲完了。', 'model');
+      source = deepDone < 0 ? stages.deep_outline : stages.deep[deepDone];
+    } else {
+      source = stages[mode];
+    }
+    const result = JSON.parse(JSON.stringify(source));
+    stageCount += 1;
+    result.id = `mock-${result.type}-${stageCount}`;
+    result.paper = MOCK_PAPER;
+    if (result.type === 'recap') {
+      // 术语表的状态和讲过的位置按概念记录填，和后端的做法一样。
+      const known = new Map(record.get().concepts.map((c) => [c.name.toLowerCase(), c]));
+      for (const item of result.glossary) {
+        const entry = known.get(item.term.toLowerCase());
+        item.status = entry ? entry.status : 'untaught';
+        item.explained_at = entry ? entry.where : null;
+      }
+    }
+    if (mode === 'deep') deepDone += 1;
+    produced.set(result.id, result);
+    return result;
+  }
   async function loadContent() {
     if (!content) content = await getJson(`mock/paper-${MOCK_PAPER}.json`);
     return content;
@@ -225,6 +265,7 @@ function mockApi() {
   return {
     mode: 'mock',
     backend: null,
+    features: ['stages'],
     defaultPaper: MOCK_PAPER,
     async openPaper() {
       const data = await loadContent();
@@ -238,16 +279,23 @@ function mockApi() {
     listExplanations: async () => [],
     // 样例模式不写任何读者数据；概念记录只留在这个标签页里。
     async acknowledge(paper, id) {
-      record.displayed((await loadCanned()).find((x) => x.id === id));
+      record.displayed(produced.get(id) || (await loadCanned()).find((x) => x.id === id));
       return { id, displayed: true };
     },
     getRecord: async () => record.get(),
     saveRecord: async (paper, version, concepts) => record.save(version, concepts),
     async sendFeedback(paper, feedback) {
-      return record.feedback((await loadCanned()).find((x) => x.id === feedback.explanation), feedback);
+      const target = produced.get(feedback.explanation) || (await loadCanned()).find((x) => x.id === feedback.explanation);
+      return record.feedback(target, feedback);
     },
     async explain(paper, request, onStatus) {
       await loadCanned();
+      if (['recap', 'deep', 'position', 'next_reading'].includes(request.mode)) {
+        if (!served) throw new ApiError('先生成全文导读，才能做这一步。', 'http', 400);
+        onStatus('整理中…（样例数据）');
+        await wait(500);
+        return stage(request.mode);
+      }
       if (served >= canned.length) {
         throw new ApiError('样例数据只有这几轮。接上后端后，这里会继续往下讲。', 'model');
       }

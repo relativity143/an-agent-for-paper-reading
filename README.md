@@ -136,7 +136,7 @@ arXiv HTML is preferred because most physics papers are on arXiv, and the HTML v
 
 ![Concept map mockup](docs/mockups/concept-map/preview.jpg)
 
-**Current delivery:** the first local prototype for personal reading trials. The installation and commands below are available; the P2–P3 web interface and subsequent evaluation remain planned. This does not establish a demonstrated comprehension benefit.
+**Current delivery:** both the first local prototype and the local web reading interface are usable for personal reading trials. See [web/README.md](web/README.md) for the web interface; the installation and commands below cover the Skill and the command-line tools. The web interface has point-by-point explanations, the per-paper concept record with feedback, and the concept map; side chat, the recap and glossary, later stages and the evaluation remain planned. Explanation quality and learning effect have not been evaluated, so this does not establish that they work.
 
 ## Evaluation plan
 

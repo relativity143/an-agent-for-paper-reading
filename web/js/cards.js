@@ -130,12 +130,144 @@ function overviewCard(x) {
     ${section('接下来', next ? `${blocks(next.text)}${locs(next.where)}` : '<p>可以点“继续”，从主线开始讲；也可以直接提问。</p>', 'progress')}`;
 }
 
+// ---- 读完之后的四个阶段（接口约定 4.10 节） ----
+
+const GLOSSARY_STATUS = { known: '已经会', explained: '讲过', unsure: '还不懂', untaught: '未讲' };
+const ROLE_LABEL = { foundation: '奠基工作', predecessor: '直接前作', contrast: '对照工作' };
+const KIND_LABEL = { notes: '讲义或综述', foundation: '奠基论文', recent: '相关的新工作' };
+const CHECKED_LABEL = { citation: '只看了本文里引用它的地方', abstract: '核对过它的摘要', fulltext: '核对过它的全文' };
+
+// 位置文字（“S2.SS2.p1”“PDF 第 2 页”）：先当普通文字放着，页面再把认得出来的变成可以点的。
+function whereText(text) {
+  return text ? `<span class="where-text">${escapeHtml(text)}</span>` : '';
+}
+
+// 一条路线式的清单：编号、名字、范围。导读的阅读路线、完整讲解的目录、主线上还没讲到的步骤都用它。
+function routeList(items, extraClass) {
+  const rows = items.map((item) => {
+    const range = item.range ? `<span class="route-range">${escapeHtml(item.range)}</span>` : '';
+    return `<li data-step="${item.n}"><span class="route-mark" aria-hidden="true">${item.n}</span>`
+      + `<span class="route-body"><span class="route-name">${escapeHtml(item.name || '')}</span>${range}</span></li>`;
+  }).join('');
+  return rows ? `<ol class="route ${extraClass}">${rows}</ol>` : '';
+}
+
+function recapCard(x) {
+  const point = (c) => `<li><strong>${renderInline(c.point || '')}</strong> ${whereChips(c.where)}`
+    + `${(c.foundations || []).length ? `<br><span class="recap-found">补了：${c.foundations.map((f) => renderInline(f)).join('、')}</span>` : ''}`
+    + `${c.back ? `<br>${renderInline(c.back)}` : ''}</li>`;
+  const steps = (x.steps || []).map((s) => `
+    <div class="recap-step"><p class="step-line">第 ${escapeHtml(String(s.step))} 步：${escapeHtml(s.name || '')}</p>
+    <ul class="recap-points">${(s.covered || []).map(point).join('')}</ul></div>`).join('');
+  const off = (x.off_route || []).length
+    ? `<div class="recap-step"><p class="step-line">主线之外</p><ul class="recap-points">${x.off_route.map(point).join('')}</ul></div>` : '';
+  const remaining = routeList((x.remaining || []).map((r) => ({ n: r.step, name: r.name, range: r.range })), 'route-plain');
+  const rows = (x.glossary || []).map((g) => `
+    <tr><th scope="row">${renderInline(g.term || '')}
+    <span class="pill pill-${g.status === 'untaught' ? 'other' : escapeHtml(g.status || 'other')}">${GLOSSARY_STATUS[g.status] || escapeHtml(String(g.status || ''))}</span></th>
+    <td>${renderInline(g.meaning || '')}</td>
+    <td>${whereText(g.first_seen)}</td><td>${g.explained_at ? whereText(g.explained_at) : '—'}</td></tr>`).join('');
+  const glossary = rows ? `<div class="table-wrap"><table class="glossary">
+    <thead><tr><th scope="col">术语或符号</th><th scope="col">本文中的意思</th><th scope="col">首次出现</th><th scope="col">讲过的位置</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>` : '';
+  return `
+    <header class="card-head"><p class="card-kind">第一部分回顾</p><h3>前面讲过什么</h3></header>
+    ${x.note ? section('', blocks(x.note), 'intro') : ''}
+    ${section('沿着主线', steps + off)}
+    ${section('主线上还没讲到的', remaining ? `${remaining}<p class="hint">完整讲解会补上这些部分。</p>` : '')}
+    ${section(`本篇术语表（${(x.glossary || []).length} 条）`, glossary ? `${glossary}<p class="hint">“已经会／讲过／还不懂”取自你的概念记录，在右上角的“记录”里可以改。</p>` : '')}
+    ${section('接下来', blocks(x.next), 'progress')}`;
+}
+
+function deepOutlineCard(x) {
+  const list = routeList((x.sections || []).map((s) => ({ n: s.n, name: s.title, range: s.range })), 'route-plain');
+  return `
+    <header class="card-head"><p class="card-kind">完整讲解 · 目录</p><h3>严格地再讲一遍</h3></header>
+    ${section('范围', blocks(x.scope), 'intro')}
+    ${section(`分 ${(x.sections || []).length} 段`, list)}
+    ${section('接下来', '<p>点“下一段”，从第 1 段开始。这一遍不再为读懂而简化；哪里卡住了直接提问，答完再接着讲。</p>', 'progress')}`;
+}
+
+function deepCard(x) {
+  const assumes = (x.assumes || []).map((a) => `
+    <li><span class="pill pill-${STATUS_LABEL[a.status] ? a.status : 'other'}">${STATUS_LABEL[a.status] || escapeHtml(String(a.status || ''))}</span>
+    <span class="assume-name">${renderInline(a.concept || '')}</span>
+    ${a.explained_at ? refChip(a.explained_at) : ''}
+    ${a.note ? `<span class="assume-note">${renderInline(a.note)}</span>` : ''}</li>`).join('');
+  const foundations = (x.foundations || []).map((f) => `
+    <li><strong>${renderInline(f.name || '')}</strong>
+    <span class="pill ${f.taught ? 'pill-new' : ''}">${f.taught ? '这里补讲' : '前面讲过'}</span>
+    ${!f.taught && f.explained_at ? whereText(f.explained_at) : ''}
+    ${f.use ? `<div>${renderInline(f.use)}</div>` : ''}
+    ${f.taught && f.itself ? `<div class="deep-itself">${renderBlocks(f.itself)}</div>` : ''}</li>`).join('');
+  const simplified = (x.simplified_before || []).map((t) => `<li>${renderInline(t)}</li>`).join('');
+  const evidence = (x.evidence || []).map((e) => `
+    <li><p><strong>${renderInline(e.claim || '')}</strong></p>
+    <dl class="evidence"><dt>依据</dt><dd>${renderInline(e.support || '')}</dd>
+    <dt>支持到什么程度</dt><dd>${renderInline(e.strength || '')}</dd>
+    <dt>局限</dt><dd>${renderInline(e.limits || '')}</dd></dl></li>`).join('');
+  const unexpanded = (x.unexpanded || []).map((t) => `<button type="button" class="term" data-term="${escapeHtml(t)}">${renderInline(t)}</button>`).join('');
+  const last = x.section === x.sections_total;
+  return `
+    <header class="card-head">
+      <p class="card-kind">完整讲解 · 第 ${escapeHtml(String(x.section))} 段，共 ${escapeHtml(String(x.sections_total))} 段</p>
+      <h3>${renderInline(x.title || '')}</h3>
+      <p class="locs">${whereText(x.range)}${whereChips(x.where)}</p>
+    </header>
+    ${section('先说结论', blocks(x.picture), 'intro')}
+    ${assumes ? section('这里默认你知道', `<ul class="assumes">${assumes}</ul>`) : ''}
+    ${foundations ? section('这一段用到的基础', `<ul class="deep-foundations">${foundations}</ul>`) : ''}
+    ${section('正文', blocks(x.body), 'deep-body')}
+    ${simplified ? section('前面说得简单的地方', `<ul>${simplified}</ul>`) : ''}
+    ${evidence ? section('结论由什么支持', `<ol class="evidence-list">${evidence}</ol>`) : ''}
+    ${unexpanded ? section('用到但没展开的词', `<p class="terms">${unexpanded}</p><p class="hint">不熟的话点一下，我来讲。</p>`) : ''}
+    ${section('讲到哪了', `${blocks((x.progress || {}).text)}${last ? '<p class="next">完整讲解到这里结束。看懂了多少由你自己判断，我不出题。</p>' : ''}`, 'progress')}`;
+}
+
+function sourceLine(item) {
+  const checked = CHECKED_LABEL[item.checked] || '没有说明核对到哪一步';
+  const link = item.url ? ` <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">打开来源</a>` : '';
+  return `<p class="source-line">${item.ref ? `参考文献 ${escapeHtml(item.ref)} · ` : ''}${checked}${link}</p>`;
+}
+
+function positionCard(x) {
+  const items = (x.items || []).map((item) => `
+    <li><p><span class="pill">${ROLE_LABEL[item.role] || escapeHtml(String(item.role || ''))}</span> <strong>${renderInline(item.name || '')}</strong></p>
+    <p>${renderInline(item.what || '')}</p>
+    <p>${renderInline(item.relation || '')}</p>
+    <p class="hint">${item.said_by === 'source' ? '这是核对过来源后的说法。' : '这是本文作者对它的说法，没有另外核对。'}</p>
+    ${sourceLine(item)}</li>`).join('');
+  return `
+    <header class="card-head"><p class="card-kind">本篇在领域中的位置</p><h3>它依赖和对照的工作</h3></header>
+    ${section('', items ? `<ul class="field-list">${items}</ul>` : '<p class="none">没有核实得了的条目，这次不列。</p>')}
+    ${x.note ? section('说明', blocks(x.note)) : ''}`;
+}
+
+function nextReadingCard(x) {
+  const items = (x.items || []).map((item) => `
+    <li><p><span class="pill">${KIND_LABEL[item.kind] || escapeHtml(String(item.kind || ''))}</span> <strong>${renderInline(item.name || '')}</strong></p>
+    <p>${renderInline(item.why || '')}</p>
+    ${(item.missing || []).length ? `<p class="hint">按你的记录，读它之前可能还缺：${item.missing.map((m) => renderInline(m)).join('、')}（暂定）</p>` : ''}
+    ${sourceLine(item)}</li>`).join('');
+  return `
+    <header class="card-head"><p class="card-kind">下一篇读什么</p><h3>最多三篇</h3></header>
+    ${section('', items ? `<ol class="field-list">${items}</ol>` : '<p class="none">没有核实得了的推荐，这次不列。</p>')}
+    ${x.note ? section('说明', blocks(x.note)) : ''}`;
+}
+
+const CARD_BUILDERS = {
+  overview: overviewCard, point: pointCard, recap: recapCard, deep_outline: deepOutlineCard,
+  deep: deepCard, position: positionCard, next_reading: nextReadingCard,
+};
+
 export function explanationCard(x) {
   const card = document.createElement('article');
-  card.className = `card card-${x.type === 'overview' ? 'overview' : 'point'}`;
+  // 不认识的类型按逐点讲解显示，至少不丢内容。
+  const type = CARD_BUILDERS[x.type] ? x.type : 'point';
+  card.className = `card card-${type.replace('_', '-')}`;
   card.dataset.id = x.id;
   card.tabIndex = -1;
-  card.innerHTML = x.type === 'overview' ? overviewCard(x) : pointCard(x);
+  card.innerHTML = CARD_BUILDERS[type](x);
   typeset(card);
   return card;
 }

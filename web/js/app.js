@@ -19,6 +19,7 @@ const els = {
   quoteChip: $('quote-chip'), quoteText: $('quote-text'), quoteClear: $('quote-clear'),
   pdfFields: $('pdf-fields'), pdfPage: $('pdf-page'), pdfQuote: $('pdf-quote'), pdfToggle: $('pdf-toggle'),
   askBtn: $('ask-btn'), continueBtn: $('continue-btn'), askSelection: $('ask-selection'),
+  stageBtn: $('stage-btn'), stageMenu: $('stage-menu'),
 };
 
 const state = {
@@ -87,6 +88,7 @@ const mapView = createMap({
   title: () => (state.content && state.content.title) || state.paper,
   record: () => record.current(),
   explanations: () => [...state.explanations.values()],
+  steps: () => state.steps,
   jump(where) {
     const target = paperView.resolve(where);
     if (!target) return false;
@@ -105,14 +107,112 @@ function hasQuestionInput() {
   return paperView.isPdf() && Boolean(els.pdfQuote.value.trim());
 }
 
+// ---- 读完之后的四个阶段（4.10 节） ----
+
+function hasOverview() {
+  for (const x of state.explanations.values()) if (x.type === 'overview') return true;
+  return false;
+}
+
+// 完整讲解讲到哪了：有没有目录、讲到第几段、共几段。
+function deepProgress() {
+  let outline = null;
+  let section = 0;
+  for (const x of state.explanations.values()) {
+    if (x.type === 'deep_outline') outline = x;
+    if (x.type === 'deep' && Number.isInteger(x.section)) section = Math.max(section, x.section);
+  }
+  const total = outline ? (outline.sections || []).length : 0;
+  return { started: Boolean(outline), section, total, finished: Boolean(outline) && section >= total };
+}
+
+function primaryMode() {
+  let last = null;
+  for (const x of state.explanations.values()) last = x;
+  const inDeep = last && (last.type === 'deep_outline' || last.type === 'deep');
+  return inDeep && !deepProgress().finished ? 'deep' : 'continue';
+}
+
+function closeStageMenu() {
+  els.stageMenu.hidden = true;
+  els.stageBtn.setAttribute('aria-expanded', 'false');
+}
+
+function openStageMenu() {
+  const deep = deepProgress();
+  const items = [
+    { mode: 'recap', label: '回顾与术语表', hint: '前面讲过什么，加一份本篇的术语表' },
+    deep.finished
+      ? { mode: 'deep', label: '完整讲解（已经讲完）', disabled: true }
+      : { mode: 'deep', label: deep.started ? `完整讲解：接着讲第 ${deep.section + 1} 段` : '完整讲解', hint: deep.started ? `共 ${deep.total} 段` : '严格地再讲一遍，先给目录' },
+    { mode: 'position', label: '本篇在领域中的位置', hint: '它依赖和对照的几项工作' },
+    { mode: 'next_reading', label: '下一篇读什么', hint: '最多三篇' },
+  ];
+  if (primaryMode() === 'deep') {
+    items.push({ mode: 'continue', label: '回到主线，讲下一个点', disabled: state.ended, hint: state.ended ? '主线已经讲完' : '' });
+  }
+  els.stageMenu.replaceChildren(...items.map((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.disabled = Boolean(item.disabled);
+    const label = document.createElement('span');
+    label.textContent = item.label;
+    button.append(label);
+    if (item.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'stage-hint';
+      hint.textContent = item.hint;
+      button.append(hint);
+    }
+    button.addEventListener('click', () => { closeStageMenu(); requestExplanation({ mode: item.mode }); });
+    return button;
+  }));
+  els.stageMenu.hidden = false;
+  els.stageBtn.setAttribute('aria-expanded', 'true');
+  const first = els.stageMenu.querySelector('button:not(:disabled)');
+  if (first) first.focus();
+}
+
+// 卡片里的位置文字（术语表的“首次出现”、完整讲解的范围）：认得出来的变成可以点的标签。
+function linkWhere(card) {
+  card.querySelectorAll('.where-text').forEach((span) => {
+    const target = paperView.resolve(span.textContent);
+    if (!target) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'loc';
+    button.textContent = span.textContent;
+    if (target.page) button.dataset.page = String(target.page);
+    else button.dataset.loc = target.id;
+    span.replaceWith(button);
+  });
+  // 推荐的文献是 arXiv 上的：除了打开来源，还可以直接在这里读它。
+  if (state.api.mode !== 'live') return;
+  card.querySelectorAll('.source-line a').forEach((link) => {
+    const match = /arxiv\.org\/(?:abs|html|pdf)\/([0-9]{4}\.[0-9]{4,5}(?:v[0-9]+)?)/.exec(link.href);
+    if (!match) return;
+    const open = document.createElement('a');
+    open.href = `?paper=${encodeURIComponent(match[1])}`;
+    open.textContent = '在这里读它';
+    link.after(' · ', open);
+  });
+}
+
 // “继续”要等上一轮的显示状态记好之后才放开，否则后端会重复返回同一轮。
 function refreshButtons() {
   record.setGateVisible(readingContext.ready());
   const blocked = state.busy || !state.paper || state.unacked.size > 0 || !readingContext.ready() || !record.ready();
-  els.continueBtn.disabled = blocked || state.ended;
+  // 最新一张卡片是完整讲解的目录或某一段时，主按钮接着讲下一段；否则沿主线讲下一个点。
+  const mode = primaryMode();
+  els.continueBtn.textContent = mode === 'deep' ? '下一段' : '继续';
+  els.continueBtn.disabled = blocked || (mode === 'continue' && state.ended);
+  els.stageBtn.hidden = !(state.api && (state.api.features || []).includes('stages') && hasOverview());
+  els.stageBtn.disabled = blocked;
+  if (blocked) closeStageMenu();
   els.continueBtn.title = !readingContext.ready() ? '先查看本文所需基础，再确认哪些已经会、哪些需要补。'
     : !record.ready() ? '先确认上次读这篇时的记录。'
-      : state.ended ? '主线已经讲完，可以继续提问。' : '';
+      : mode === 'continue' && state.ended ? '主线已经讲完，可以继续提问，或者看看“读完之后”。' : '';
   els.askBtn.disabled = blocked || !hasQuestionInput();
   fitQuestion();
   syncPdfFields();
@@ -142,7 +242,7 @@ function renderSteps(current) {
     return item;
   }));
   // 导读卡片里的路线图跟着标出现在讲到哪一站。
-  els.cards.querySelectorAll('.route li').forEach((item) => {
+  els.cards.querySelectorAll('.card-overview .route li').forEach((item) => {
     const step = Number(item.dataset.step);
     const here = Boolean(current) && step === current;
     item.classList.toggle('is-past', Boolean(current) && step < current);
@@ -184,8 +284,11 @@ function selectCard(card, explanation, { scroll = true } = {}) {
   els.cards.querySelectorAll('.card.is-current').forEach((c) => c.classList.remove('is-current'));
   card.classList.add('is-current');
   paperView.highlight(explanation.highlights, { scroll });
-  const step = explanation.progress && Number.isInteger(explanation.progress.step) ? explanation.progress.step : null;
-  renderSteps(step);
+  // 顶上的主线进度只跟着导读和逐点讲解走。
+  if (explanation.type === 'overview' || explanation.type === 'point') {
+    const step = explanation.progress && Number.isInteger(explanation.progress.step) ? explanation.progress.step : null;
+    renderSteps(step);
+  }
 }
 
 // 等浏览器把卡片画出来。页面在后台时不会有动画帧，所以加一个时间上限。
@@ -226,7 +329,8 @@ async function showExplanation(explanation, { select = true } = {}) {
   if (!card) {
     card = explanationCard(explanation);
     linkRoute(card);
-    if (record.supported() && explanation.type !== 'overview') {
+    linkWhere(card);
+    if (record.supported() && (explanation.type === 'point' || explanation.type === 'deep')) {
       card.append(record.feedbackBar(explanation, () => lastExplanationId() === explanation.id));
     }
     state.cards.set(explanation.id, card);
@@ -234,7 +338,8 @@ async function showExplanation(explanation, { select = true } = {}) {
     showAsked(card, explanation.asked);
   }
   if (explanation.type === 'overview') await syncSteps(explanation);
-  if (explanation.type !== 'overview') {
+  // 主线讲没讲完只看逐点讲解；回顾、完整讲解这些不改变它。
+  if (explanation.type === 'point') {
     state.ended = Boolean(explanation.progress) && explanation.progress.next === null;
   }
   if (select) {
@@ -529,7 +634,12 @@ function submitQuestion() {
 }
 
 function bindEvents() {
-  els.continueBtn.addEventListener('click', () => requestExplanation({ mode: 'continue' }));
+  els.continueBtn.addEventListener('click', () => requestExplanation({ mode: primaryMode() }));
+  els.stageBtn.addEventListener('click', () => { if (els.stageMenu.hidden) openStageMenu(); else closeStageMenu(); });
+  els.stageMenu.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeStageMenu(); els.stageBtn.focus(); } });
+  document.addEventListener('mousedown', (event) => {
+    if (!els.stageMenu.hidden && !event.target.closest('.stage-wrap')) closeStageMenu();
+  });
   els.composer.addEventListener('submit', (event) => { event.preventDefault(); submitQuestion(); });
   for (const input of [els.question, els.pdfPage, els.pdfQuote]) input.addEventListener('input', refreshButtons);
   els.question.addEventListener('keydown', (event) => {

@@ -7,6 +7,9 @@ const WORKER = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).hr
 // 视口上下各多画这么远；更远的页把画布放掉，几百页的书也不会把内存占满。
 const KEEP = 1500;
 const MAX_RATIO = 2;
+// 缩放的档位。100% 是页面和左边面板一样宽；选择记在浏览器里。
+const ZOOMS = [0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+const ZOOM_KEY = 'paperread-pdf-zoom';
 
 let library = null;
 function loadLibrary() {
@@ -63,6 +66,13 @@ export async function createPdfView(root, scroller, url) {
     pages.push({ n, el, state: 'empty', token: 0, task: null, spans: null });
   }
   root.replaceChildren(holder);
+
+  let zoom = 1;
+  try {
+    const saved = Number(localStorage.getItem(ZOOM_KEY));
+    if (ZOOMS.includes(saved)) zoom = saved;
+  } catch { /* 读不到就用 100% */ }
+  holder.style.setProperty('--pdf-zoom', String(zoom));
 
   let marks = new Map(); // 页码 → [引文]
 
@@ -143,18 +153,65 @@ export async function createPdfView(root, scroller, url) {
     return box.bottom > view.top - KEEP && box.top < view.bottom + KEEP;
   }
 
-  // 窗口宽度变了：已经画好的页按新宽度重画。
+  // 页面宽度变了（窗口变宽，或者换了缩放）：已经画好的页按新宽度重画。
+  function redraw() {
+    for (const page of pages) {
+      if (page.state === 'done' && Math.abs(page.el.clientWidth - page.width) > 8) release(page);
+    }
+    for (const page of pages) if (page.state === 'empty' && near(page)) draw(page);
+  }
   let resizeTimer = 0;
   const resizer = new ResizeObserver(() => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      for (const page of pages) {
-        if (page.state === 'done' && Math.abs(page.el.clientWidth - page.width) > 8) release(page);
-      }
-      for (const page of pages) if (page.state === 'empty' && near(page)) draw(page);
-    }, 200);
+    resizeTimer = setTimeout(redraw, 200);
   });
   resizer.observe(holder);
+
+  // 缩放：左上角一个小工具条。放大后页面比面板宽，可以横向滚动。
+  const tools = document.createElement('div');
+  tools.className = 'pdf-tools';
+  const bar = document.createElement('div');
+  bar.className = 'pdf-tools-bar';
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', 'PDF 缩放');
+  const smaller = document.createElement('button');
+  const level = document.createElement('button');
+  const larger = document.createElement('button');
+  smaller.type = level.type = larger.type = 'button';
+  smaller.textContent = '−';
+  larger.textContent = '+';
+  smaller.setAttribute('aria-label', '缩小');
+  larger.setAttribute('aria-label', '放大');
+  level.title = '回到 100%（和面板一样宽）';
+  bar.append(smaller, level, larger);
+  tools.append(bar);
+  holder.prepend(tools);
+
+  function showZoom() {
+    level.textContent = `${Math.round(zoom * 100)}%`;
+    smaller.disabled = zoom <= ZOOMS[0];
+    larger.disabled = zoom >= ZOOMS[ZOOMS.length - 1];
+  }
+
+  function setZoom(next) {
+    if (!ZOOMS.includes(next) || next === zoom) return;
+    // 缩放前记下正在看的是哪一页的哪个位置，缩放后回到同一处。
+    const view = scroller.getBoundingClientRect();
+    const current = pages.find((p) => p.el.getBoundingClientRect().bottom > view.top + 1) || pages[0];
+    const box = current.el.getBoundingClientRect();
+    const ratio = box.height ? (view.top - box.top) / box.height : 0;
+    zoom = next;
+    holder.style.setProperty('--pdf-zoom', String(zoom));
+    try { localStorage.setItem(ZOOM_KEY, String(zoom)); } catch { /* 记不下来时下次回到 100% */ }
+    showZoom();
+    const after = current.el.getBoundingClientRect();
+    scroller.scrollTop += (after.top + ratio * after.height) - scroller.getBoundingClientRect().top;
+    redraw();
+  }
+  smaller.addEventListener('click', () => setZoom(ZOOMS[ZOOMS.indexOf(zoom) - 1]));
+  larger.addEventListener('click', () => setZoom(ZOOMS[ZOOMS.indexOf(zoom) + 1]));
+  level.addEventListener('click', () => setZoom(1));
+  showZoom();
 
   function scrollToElement(el, offset) {
     const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;

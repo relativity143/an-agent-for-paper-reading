@@ -87,6 +87,10 @@
         <textarea id="question" rows="1" placeholder="直接写问题，或先在左边选中一段原文"></textarea>
         <div class="composer-actions">
           <button type="button" id="pdf-toggle" class="btn btn-quiet" aria-controls="pdf-fields" aria-expanded="false" hidden>引用原文</button>
+          <div class="stage-wrap">
+            <button type="button" id="stage-btn" class="btn btn-quiet" aria-haspopup="true" aria-controls="stage-menu" aria-expanded="false" hidden>读完之后</button>
+            <div id="stage-menu" class="stage-menu" role="menu" hidden></div>
+          </div>
           <button type="submit" id="ask-btn" class="btn" disabled>提问</button>
           <button type="button" id="continue-btn" class="btn btn-primary">继续</button>
         </div>
